@@ -146,7 +146,7 @@ calendar:
   constraints:
     max_meetings_per_day: 8
     min_advance_notice_hours: 4
-    max_booking_window_days: 60
+    max_booking_window_days: 20
     blackout_dates:
       - "2025-12-25"  # Christmas
       - "2025-12-26"  # Boxing Day
