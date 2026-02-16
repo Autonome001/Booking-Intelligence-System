@@ -1,0 +1,285 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Booking Intelligence System - Default Configuration
+# ═══════════════════════════════════════════════════════════════════════
+#
+# This configuration file controls all system behavior.
+# Use environment variables with ${VAR_NAME} syntax for secrets.
+#
+# Environment-specific overrides:
+# - development.yaml
+# - staging.yaml
+# - production.yaml
+# ═══════════════════════════════════════════════════════════════════════
+
+# === IDENTITY ===
+identity:
+  company_name: "Autonome"
+  company_url: "https://autonome.us"
+  support_email: "hello@autonome.us"
+  brand_color: "#6366F1"
+  logo_url: "https://autonome.us/logo.png"
+
+# === TONE OF VOICE ===
+tone_of_voice:
+  style: "professional_warm"  # Options: professional_warm, casual_friendly, executive_formal
+  personality_traits:
+    - "consultative"
+    - "responsive"
+    - "expertise-driven"
+    - "solution-oriented"
+  avoid_words:
+    - "obviously"
+    - "just"
+    - "basically"
+    - "simply"
+
+# === SCHEDULING ===
+scheduling:
+  timezone: "America/New_York"
+
+  # Working hours (24-hour format HH:MM)
+  working_hours:
+    monday:
+      start: "09:00"
+      end: "17:00"
+    tuesday:
+      start: "09:00"
+      end: "17:00"
+    wednesday:
+      start: "09:00"
+      end: "17:00"
+    thursday:
+      start: "09:00"
+      end: "17:00"
+    friday:
+      start: "09:00"
+      end: "17:00"
+    saturday:
+      enabled: false
+    sunday:
+      enabled: false
+
+  # Buffer times (in minutes)
+  buffer_times:
+    before_meeting: 15
+    after_meeting: 15
+
+  # Provisional hold settings
+  provisional_hold:
+    enabled: true
+    duration_minutes: 30
+    auto_release_if_not_approved: true
+
+  # Meeting durations by type (in minutes)
+  meeting_durations:
+    discovery: 15
+    consultation: 30
+    demo: 45
+    strategy: 60
+    technical: 60
+
+# === ROUTING RULES ===
+routing_rules:
+  # Enterprise Fast Track
+  - name: "enterprise_fast_track"
+    priority: 100
+    conditions:
+      customer_tier: "Enterprise"
+      urgency_level: ["High", "Medium"]
+    actions:
+      meeting_type: "strategy"
+      duration: 60
+      priority: 5
+      require_approval: true
+      notify_slack: true
+      calendar: "primary"
+
+  # Professional Standard
+  - name: "professional_standard"
+    priority: 50
+    conditions:
+      customer_tier: "Professional"
+    actions:
+      meeting_type: "consultation"
+      duration: 30
+      priority: 3
+      require_approval: true
+      calendar: "primary"
+
+  # Basic Discovery
+  - name: "basic_discovery"
+    priority: 10
+    conditions:
+      customer_tier: "Basic"
+    actions:
+      meeting_type: "discovery"
+      duration: 15
+      priority: 2
+      require_approval: false  # Auto-approve
+      calendar: "discovery"
+
+# === CALENDAR ===
+calendar:
+  # Calendar providers (up to 7)
+  providers:
+    - id: "primary"
+      type: "google"
+      calendar_id: "primary"
+      priority: 100
+      enabled: true
+      meeting_types: ["strategy", "consultation", "demo", "technical"]
+
+    - id: "discovery"
+      type: "google"
+      calendar_id: "discovery@autonome.us"
+      priority: 50
+      enabled: true
+      meeting_types: ["discovery"]
+
+  # Scheduling constraints
+  constraints:
+    max_meetings_per_day: 8
+    min_advance_notice_hours: 4
+    max_booking_window_days: 60
+    blackout_dates:
+      - "2025-12-25"  # Christmas
+      - "2025-12-26"  # Boxing Day
+      - "2026-01-01"  # New Year's Day
+
+  # Sync settings
+  sync:
+    webhook_enabled: true
+    sync_interval_minutes: 5
+    cache_ttl_minutes: 15
+
+# === SLACK ===
+slack:
+  # Approval mode: required, autopilot, conditional
+  approval_mode: "required"
+
+  # Conditional approval rules (when approval_mode = "conditional")
+  conditional_rules:
+    auto_approve_if:
+      - customer_tier: "Basic"
+        priority: [1, 2]
+      - qualification_score_above: 80
+
+    require_approval_if:
+      - customer_tier: "Enterprise"
+      - urgency_level: "High"
+      - priority: [4, 5]
+
+  # Notification settings
+  notifications:
+    channel_id: "${SLACK_CHANNEL_ID}"
+    mention_on_enterprise: true
+    mention_on_high_priority: true
+    daily_summary: true
+    daily_summary_time: "09:00"
+
+  # Interaction settings
+  interaction:
+    revision_enabled: true
+    takeover_enabled: true
+    max_revision_rounds: 3
+
+# === TAVUS ===
+tavus:
+  enabled: true
+  stage: "optional"  # Options: required, optional, disabled
+
+  # Trigger conditions
+  trigger_conditions:
+    customer_tier: ["Professional", "Enterprise"]
+    meeting_duration_above: 30
+
+  # Video settings
+  video_settings:
+    replica_id: "${TAVUS_REPLICA_ID}"
+    background_url: "https://autonome.us/video-background.jpg"
+    default_script_template: |
+      Hi {{name}}, I'm looking forward to our call about {{company}}'s automation goals.
+
+      Before we meet, I'd love to understand a bit more about your needs.
+      Please answer a few quick questions so we can make our time together as valuable as possible.
+
+  # Q&A questions
+  qa_questions:
+    - "What's the biggest operational challenge you're facing right now?"
+    - "What does success look like for this project?"
+    - "What's your timeline for implementing automation?"
+
+# === MESSAGING TEMPLATES ===
+messaging_templates:
+  email:
+    # Confirmation email
+    confirmation:
+      subject: "Confirmed: {{meeting_type}} with {{company_name}} - {{date}}"
+      body_template: |
+        Hi {{customer_name}},
+
+        Your {{meeting_type}} is confirmed for {{date_formatted}} at {{time_formatted}} {{timezone}}.
+
+        Meeting Link: {{meeting_link}}
+        Duration: {{duration}} minutes
+
+        Looking forward to discussing {{key_needs}}.
+
+        Best,
+        The {{company_name}} Team
+
+    # 24-hour reminder
+    reminder_24h:
+      subject: "Reminder: Call tomorrow with {{company_name}}"
+      body_template: |
+        Hi {{customer_name}},
+
+        Just a friendly reminder about our call tomorrow at {{time_formatted}} {{timezone}}.
+
+        Meeting Link: {{meeting_link}}
+
+        See you then!
+
+        Best,
+        The {{company_name}} Team
+
+    # 1-hour reminder
+    reminder_1h:
+      subject: "Starting soon: {{meeting_type}} in 1 hour"
+      body_template: |
+        Hi {{customer_name}},
+
+        Our {{meeting_type}} starts in 1 hour. See you at {{time_formatted}}!
+
+        Meeting Link: {{meeting_link}}
+
+        Best,
+        The {{company_name}} Team
+
+# === SYSTEM BEHAVIOR ===
+system_behavior:
+  # Conversation settings
+  conversation:
+    max_turns: 10
+    timeout_minutes: 30
+    require_all_fields: false
+    allow_skip_fields: ["phone", "company_name"]
+
+  # AI settings
+  ai:
+    model: "gpt-4o"
+    temperature: 0.3
+    max_tokens: 500
+    customer_analysis_enabled: true
+
+  # Logging settings
+  logging:
+    level: "info"  # Options: debug, info, warn, error
+    structured: true
+    log_to_database: true
+
+  # Error handling
+  error_handling:
+    retry_attempts: 3
+    fallback_to_human: true
+    graceful_degradation: true

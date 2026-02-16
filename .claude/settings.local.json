@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(npm install)",
+      "Bash(npm run migrate:test:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(test:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(find:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd.exe /c \"taskkill /PID 26872 /F\")",
+      "Bash(powershell -Command \"Stop-Process -Id 26872 -Force\")",
+      "Bash(node run-migration.js:*)",
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(ipconfig:*)",
+      "Bash(curl:*)",
+      "Bash(copy \"Autonome - Logo Icon (Blue).png\" \"Original Booking Agent\\backend\\public\\Autonome - Logo Icon (Blue).png\")",
+      "Bash(cmd.exe /c \"taskkill /PID 26528 /F\")",
+      "Bash(powershell:*)"
+    ]
+  }
+}

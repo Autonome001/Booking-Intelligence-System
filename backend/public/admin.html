@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar Manager | Autonome.us Admin</title>
+  <meta name="description" content="Manage connected Google Calendar accounts for Autonome booking system">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <svg class="icon-xl" style="display: block; margin: 0 auto 1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+      <h1>Calendar Connection Manager</h1>
+      <p>Connect up to 7 Google Calendar accounts to sync your availability</p>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="container">
+    <!-- System Status Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          System Status
+        </h3>
+      </div>
+
+      <div id="system-status">
+        <div class="text-center text-muted">
+          <div class="loading-spinner" style="margin: 1rem auto;"></div>
+          <p>Loading system status...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connected Calendars Section -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Connected Calendars
+        </h3>
+        <p class="card-subtitle" id="calendar-count">Loading...</p>
+      </div>
+
+      <!-- Calendars Container -->
+      <div id="calendars-container">
+        <div class="text-center text-muted">
+          <div class="loading-spinner" style="margin: 2rem auto;"></div>
+          <p>Loading connected calendars...</p>
+        </div>
+      </div>
+
+      <!-- Connect New Calendar Button -->
+      <button id="connect-btn" class="btn btn-primary" style="margin-top: 1.5rem;" disabled>
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Connect Google Calendar</span>
+      </button>
+    </div>
+
+    <!-- Availability Settings Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Availability Settings
+        </h3>
+        <p class="card-subtitle">Control when you're available for bookings</p>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
+        <button id="blackouts-tab" class="tab-button active" onclick="switchTab('blackouts')">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+          </svg>
+          Blackout Periods
+        </button>
+        <button id="working-hours-tab" class="tab-button" onclick="switchTab('working-hours')">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Working Hours
+        </button>
+      </div>
+
+      <!-- Blackouts Tab Content -->
+      <div id="blackouts-content" class="tab-content">
+        <!-- Add Blackout Form -->
+        <div style="background: var(--gray-50); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+          <h4 style="margin-bottom: 1rem; font-size: 16px; font-weight: 600;">Add Blackout Period</h4>
+          <form id="blackout-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label class="form-label form-label-required">Title</label>
+                <input type="text" id="blackout-title" class="form-input" placeholder="Vacation, Lunch, etc." required>
+              </div>
+              <div>
+                <label class="form-label">Description (optional)</label>
+                <input type="text" id="blackout-description" class="form-input" placeholder="Brief note">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label class="form-label form-label-required">Start Date & Time</label>
+                <input type="datetime-local" id="blackout-start" class="form-input" required>
+              </div>
+              <div>
+                <label class="form-label form-label-required">End Date & Time</label>
+                <input type="datetime-local" id="blackout-end" class="form-input" required>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Blackout
+            </button>
+          </form>
+        </div>
+
+        <!-- Blackouts List -->
+        <div id="blackouts-container">
+          <div class="text-center text-muted">
+            <div class="loading-spinner" style="margin: 2rem auto;"></div>
+            <p>Loading blackout periods...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Working Hours Tab Content -->
+      <div id="working-hours-content" class="tab-content" style="display: none;">
+        <p style="color: var(--gray-600); margin-bottom: 1.5rem;">Define your standard working hours for each day of the week. Bookings will only be offered during these times.</p>
+
+        <form id="working-hours-form">
+          <div id="working-hours-grid">
+            <div class="text-center text-muted">
+              <div class="loading-spinner" style="margin: 2rem auto;"></div>
+              <p>Loading working hours...</p>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Save Working Hours
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Instructions Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          How It Works
+        </h3>
+      </div>
+
+      <div style="line-height: 1.8;">
+        <p style="margin-bottom: 1rem;"><strong>1. Connect Your Calendars</strong></p>
+        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">Click "Connect Google Calendar" above to add each of your personal and business calendars. You can connect up to 7 calendars.</p>
+
+        <p style="margin-bottom: 1rem;"><strong>2. Unified Availability</strong></p>
+        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">The system checks ALL connected calendars to show your true availability. A time slot is only shown if you're free across all calendars.</p>
+
+        <p style="margin-bottom: 1rem;"><strong>3. Real-time Updates</strong></p>
+        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">When you create or edit events in Google Calendar, webhooks automatically update your availability (no manual refresh needed).</p>
+
+        <p style="margin-bottom: 1rem;"><strong>4. Booking Flow</strong></p>
+        <p style="color: var(--gray-600);">Customers see your unified availability on the <a href="/">booking page</a>, select a time, and submit their request.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Powered by <a href="https://autonome.us">Autonome.us</a> | <a href="/">Back to Booking Form</a></p>
+  </footer>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

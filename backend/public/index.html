@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule a Consultation | Autonome</title>
+  <meta name="description" content="Book a consultation with Autonome - Intelligent automation for modern business">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/Autonome - Logo Icon (Blue).png" type="image/png">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <!-- Autonome Logo -->
+      <div class="logo-container">
+        <img src="/Autonome - Logo Icon (Blue).png" alt="Autonome Logo" class="autonome-logo" width="80" height="80">
+        <h1 class="brand-name">Autonome</h1>
+        <div class="brand-tagline">Intelligent Systems for Modern Business</div>
+      </div>
+
+      <h2>Schedule Your Consultation</h2>
+      <p>Discover how AI-powered automation can transform your workflow, save time, and accelerate growth</p>
+
+      <!-- Trust Indicators -->
+      <div class="trust-indicators">
+        <div class="trust-item">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          <span>Free Consultation</span>
+        </div>
+        <div class="trust-item">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>30-Min Session</span>
+        </div>
+        <div class="trust-item">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          <span>Instant Response</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="container">
+    <!-- Success Message -->
+    <div id="success-message" class="alert alert-success hidden fade-in">
+      <svg class="alert-icon icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div>
+        <strong>Booking Request Submitted!</strong>
+        <p>We've received your consultation request. Check your email for confirmation and available times.</p>
+        <p><strong>Booking ID:</strong> <span id="booking-id-display"></span></p>
+      </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="error-message" class="alert alert-error hidden fade-in">
+      <svg class="alert-icon icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div>
+        <strong>Submission Failed</strong>
+        <p id="error-details"></p>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="text-center hidden">
+      <div class="loading-spinner"></div>
+      <p class="loading-terminal">Submitting your request...</p>
+    </div>
+
+    <!-- Availability Section -->
+    <div id="availability-section" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">
+            <svg class="icon icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Available Times
+          </h3>
+          <p class="card-subtitle">Select a time that works best for you</p>
+        </div>
+
+        <!-- Week Navigation -->
+        <div class="week-nav">
+          <button id="prev-week" class="btn btn-secondary btn-sm">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            <span>Previous</span>
+          </button>
+          <span id="week-display" class="text-muted"></span>
+          <button id="next-week" class="btn btn-secondary btn-sm">
+            <span>Next</span>
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Slots Container -->
+        <div id="slots-container" class="slots-container">
+          <div class="skeleton" style="height: 100px;"></div>
+          <div class="skeleton" style="height: 100px;"></div>
+          <div class="skeleton" style="height: 100px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Booking Form -->
+    <form id="booking-form" class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          Your Information
+        </h3>
+        <p class="card-subtitle">Tell us about your project</p>
+      </div>
+
+      <div class="form-group">
+        <label for="name" class="form-label form-label-required">Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          class="form-input"
+          placeholder="John Doe"
+          autocomplete="name"
+          required
+        >
+        <span id="name-error" class="form-error hidden">Please enter your name</span>
+      </div>
+
+      <div class="form-group">
+        <label for="email" class="form-label form-label-required">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          class="form-input"
+          placeholder="john@company.com"
+          autocomplete="email"
+          required
+        >
+        <span id="email-error" class="form-error hidden">Please enter a valid email</span>
+      </div>
+
+      <div class="form-group">
+        <label for="company" class="form-label">Company</label>
+        <input
+          type="text"
+          id="company"
+          name="company"
+          class="form-input"
+          placeholder="ACME Corp"
+          autocomplete="organization"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="phone" class="form-label">Phone</label>
+        <input
+          type="tel"
+          id="phone"
+          name="phone"
+          class="form-input"
+          placeholder="+1 (555) 123-4567"
+          autocomplete="tel"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="message" class="form-label form-label-required">What brings you here today?</label>
+        <textarea
+          id="message"
+          name="message"
+          class="form-textarea"
+          placeholder="Tell us about your automation needs..."
+          maxlength="2000"
+          required
+        ></textarea>
+        <div class="character-count">
+          <span id="char-count">0</span> / 2000 characters
+        </div>
+        <span id="message-error" class="form-error hidden">Please describe your needs</span>
+      </div>
+
+      <input type="hidden" id="selected-slot" name="selected_slot">
+
+      <button type="submit" id="submit-btn" class="btn btn-primary">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <span>Book Your Consultation</span>
+      </button>
+    </form>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 <strong>Autonome</strong> | Intelligent Business Automation</p>
+      <p>
+        <a href="https://autonome.us">Visit Autonome.us</a>
+        <span> • </span>
+        <a href="#">Privacy Policy</a>
+        <span> • </span>
+        <a href="/admin">Admin</a>
+      </p>
+    </div>
+  </footer>
+
+  <script src="/booking-form.js"></script>
+</body>
+</html>
