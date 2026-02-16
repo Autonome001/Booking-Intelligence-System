@@ -78,6 +78,12 @@ scheduling:
     strategy: 60
     technical: 60
 
+  # Advanced scheduling rules
+  slot_interval_minutes: 60
+  min_lead_time_minutes: 30
+  max_slots: 12
+  booking_window_hours: 48
+
 # === ROUTING RULES ===
 routing_rules:
   # Enterprise Fast Track

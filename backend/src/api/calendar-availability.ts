@@ -8,25 +8,26 @@
 import { Router, type Request, type Response } from 'express';
 import { serviceManager } from '../services/serviceManager.js';
 import { logger } from '../utils/logger.js';
+import { getSchedulingConfig, validateDuration, getBookingWindowHours } from '../utils/booking-rules.js';
 import type { CalendarService } from '../services/calendar/CalendarService.js';
 
 const router = Router();
 
 /**
  * Get Available Time Slots
- * GET /api/calendar/availability?duration=30&days=7&start=2026-03-01
+ * GET /api/calendar/availability?duration=30&start=2026-03-01
  *
- * Query Parameters:
- * - duration: Meeting duration in minutes (default: 30)
- * - days: Number of days to look ahead (default: 7)
- * - start: Start date for availability search (default: today)
- *
- * Returns unified availability across ALL connected calendars
- * (shows slots only when ALL calendars are free)
+ * Enforces standardized booking rules:
+ * - Durations: 15, 30, 45 minutes
+ * - 48-hour booking window (SPECIFIC to 15-minute Q&A)
+ * - 30-minute minimum lead time
+ * - 1-hour slot spacing (fixed interval)
+ * - Maximum 12 slots offered
  */
 router.get('/availability', async (req: Request, res: Response): Promise<void> => {
   try {
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
+    const config = getSchedulingConfig();
 
     if (!calendarService) {
       res.status(503).json({
@@ -37,37 +38,46 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Parse query parameters with defaults
-    const durationMinutes = parseInt(req.query['duration'] as string) || 30;
-    const daysAhead = parseInt(req.query['days'] as string) || 7;
+    // Parse duration and validate against rules
+    const durationMinutes = parseInt(req.query['duration'] as string) || config.defaultDuration;
+    const validation = validateDuration(durationMinutes);
 
-    const startDate = req.query['start']
-      ? new Date(req.query['start'] as string)
-      : new Date();
-
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + daysAhead);
-
-    // Validate date range
-    if (startDate >= endDate) {
+    if (!validation.valid) {
       res.status(400).json({
-        error: 'Invalid date range: start date must be before end date',
+        error: validation.error,
         slots: [],
       });
       return;
     }
+
+    // Calculate window boundaries
+    // Start depends on lead time (at least 30 mins after now)
+    const now = new Date();
+    const minStart = new Date(now.getTime() + config.minLeadTimeMinutes * 60 * 1000);
+
+    const requestedStart = req.query['start']
+      ? new Date(req.query['start'] as string)
+      : minStart;
+
+    // Ensure we don't book earlier than lead time allow
+    const startDate = requestedStart < minStart ? minStart : requestedStart;
+
+    // Window size depends on duration
+    const windowHours = getBookingWindowHours(durationMinutes);
+    const endDate = new Date(startDate.getTime() + windowHours * 60 * 60 * 1000);
 
     // Fetch availability across all calendars (intersection logic)
     const slots = await calendarService.getAvailableSlots({
       startDate,
       endDate,
       durationMinutes,
-      maxSlots: 20,
+      maxSlots: config.maxSlots,
       workingHours: {
         start: '09:00',
         end: '17:00',
       },
-      bufferMinutes: 15,
+      bufferMinutes: 0, // We use fixed interval now
+      slotIntervalMinutes: config.slotIntervalMinutes,
     });
 
     const providers = calendarService.getProviders();
@@ -81,11 +91,11 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
         duration_minutes: durationMinutes,
       })),
       calendars_checked: providers.length,
-      query: {
+      rules: {
         duration_minutes: durationMinutes,
-        days_ahead: daysAhead,
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
+        window_hours: windowHours,
+        lead_time_minutes: config.minLeadTimeMinutes,
+        max_slots: config.maxSlots,
       },
       timestamp: new Date().toISOString(),
     });

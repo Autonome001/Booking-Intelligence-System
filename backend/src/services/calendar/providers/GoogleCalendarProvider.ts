@@ -250,11 +250,11 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           location: eventDetails.location,
           conferenceData: eventDetails.meetingLink
             ? {
-                createRequest: {
-                  requestId: `${hold.calendarEventId}-meet`,
-                  conferenceSolutionKey: { type: 'hangoutsMeet' },
-                },
-              }
+              createRequest: {
+                requestId: `${hold.calendarEventId}-meet`,
+                conferenceSolutionKey: { type: 'hangoutsMeet' },
+              },
+            }
             : undefined,
           extendedProperties: {
             private: {
@@ -542,8 +542,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
   ): TimeSlot[] {
     const availableSlots: TimeSlot[] = [];
     const durationMs = options.durationMinutes * 60 * 1000;
-    const bufferMs = (options.bufferMinutes || 0) * 60 * 1000;
-
     // Default working hours: 9 AM - 5 PM
     const workStart = options.workingHours?.start || '09:00';
     const workEnd = options.workingHours?.end || '17:00';
@@ -576,8 +574,10 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           available: isAvailable,
         });
 
-        // Move to next slot (with buffer)
-        slotStart = new Date(slotEnd.getTime() + bufferMs);
+        // Move to next slot start using a fixed interval (e.g., 60 minutes)
+        // This ensures slots start at predictable times (9:00, 10:00, etc.)
+        const intervalMs = (options.slotIntervalMinutes || 60) * 60 * 1000;
+        slotStart = new Date(slotStart.getTime() + intervalMs);
       }
 
       // Move to next day

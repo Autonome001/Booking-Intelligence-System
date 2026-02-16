@@ -60,6 +60,10 @@ export const SchedulingSchema = z.object({
     strategy: z.number().int().min(5),
     technical: z.number().int().min(5),
   }),
+  slot_interval_minutes: z.number().int().min(1).optional(),
+  min_lead_time_minutes: z.number().int().min(0).optional(),
+  max_slots: z.number().int().min(1).optional(),
+  booking_window_hours: z.number().int().min(1).optional(),
 });
 
 // === ROUTING RULES ===

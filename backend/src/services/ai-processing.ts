@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { serviceManager } from './serviceManager.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
+import { getSchedulingConfig, getBookingWindowHours } from '../utils/booking-rules.js';
 import type {
   AIAnalysis,
   CustomerTier,
@@ -176,20 +177,28 @@ async function generateScheduleSuggestionsWithCalendar(analysis: AIAnalysis): Pr
         maxSlots?: number;
         workingHours?: { start: string; end: string };
         bufferMinutes?: number;
+        slotIntervalMinutes?: number;
       }) => Promise<Array<{ start: Date; end: Date; available: boolean }>>;
     } | null;
 
     if (calendarService) {
-      const daysAhead = analysis.urgency_level === 'High' ? 1 : analysis.urgency_level === 'Medium' ? 3 : 7;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() + 1); // Start tomorrow
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + daysAhead + 7); // Look ahead 7 more days
+      const config = getSchedulingConfig();
 
       // Determine meeting duration based on customer tier
-      const durationMinutes =
-        analysis.customer_tier === 'Enterprise' ? 60 :
-        analysis.customer_tier === 'Professional' ? 30 : 15;
+      let durationMinutes =
+        analysis.customer_tier === 'Enterprise' ? 45 :
+          analysis.customer_tier === 'Professional' ? 30 : 15;
+
+      // Rule: 15min sessions require Tavus
+      if (durationMinutes === 15 && !config.isTavusEnabled) {
+        durationMinutes = 30; // Fallback to 30
+      }
+
+      // Window size depends on duration
+      const windowHours = getBookingWindowHours(durationMinutes);
+      const now = new Date();
+      const startDate = new Date(now.getTime() + config.minLeadTimeMinutes * 60 * 1000);
+      const endDate = new Date(startDate.getTime() + windowHours * 60 * 60 * 1000);
 
       const availableSlots = await calendarService.getAvailableSlots({
         startDate,
@@ -200,7 +209,8 @@ async function generateScheduleSuggestionsWithCalendar(analysis: AIAnalysis): Pr
           start: '09:00',
           end: '17:00',
         },
-        bufferMinutes: 15,
+        bufferMinutes: 0,
+        slotIntervalMinutes: config.slotIntervalMinutes,
       });
 
       // Format slots for email

@@ -44,6 +44,7 @@ export interface GetAvailableSlotsOptions {
     end: string;
   };
   bufferMinutes?: number;
+  slotIntervalMinutes?: number;
 }
 
 export interface ProvisionalHoldRequest {
@@ -74,7 +75,7 @@ export class CalendarService {
   constructor(
     private supabase: SupabaseClient,
     private googleConfig: GoogleCalendarConfig
-  ) {}
+  ) { }
 
   /**
    * Initialize all active calendar providers from database
@@ -162,6 +163,7 @@ export class CalendarService {
           durationMinutes: options.durationMinutes,
           workingHours: options.workingHours,
           bufferMinutes: options.bufferMinutes,
+          slotIntervalMinutes: options.slotIntervalMinutes,
         })
     );
 

@@ -20,6 +20,7 @@ export interface AvailabilityOptions {
     end: string;   // "17:00"
   };
   bufferMinutes?: number;
+  slotIntervalMinutes?: number;
   timezone?: string;
 }
 
