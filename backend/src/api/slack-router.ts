@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import type { WebClient } from '@slack/web-api';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type OpenAI from 'openai';
+import type { Resend } from 'resend';
 import { serviceManager } from '../services/serviceManager.js';
 import { getServiceConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
@@ -75,6 +76,22 @@ interface BookingUpdateData {
   channel_id?: string;
 }
 
+interface BookingEmailRecord {
+  id?: string;
+  processing_id: string;
+  email_from: string;
+  customer_name: string | null;
+  company_name: string | null;
+  drafted_email: string | null;
+  email_thread_id?: string | null;
+}
+
+interface EmailConversationRecord {
+  id: string;
+  messages: unknown[];
+  turns_count: number | null;
+}
+
 /**
  * CRITICAL FIX: Resolve fake/test channel IDs to real channel ID
  * This fixes the channel_not_found error in revision workflows
@@ -111,6 +128,133 @@ function resolveRealChannelId(channelId: string): string {
   // If no real channel configured or invalid input, return as-is and let it fail gracefully
   logger.error(`No real channel ID configured and received invalid channel: ${channelId}`);
   return channelId;
+}
+
+function buildBookingEmailSubject(booking: BookingEmailRecord): string {
+  const companyName = booking.company_name?.trim();
+  const bookingReference = `[${booking.processing_id}]`;
+
+  if (companyName) {
+    return `Your Autonome consultation request for ${companyName} ${bookingReference}`;
+  }
+
+  return `Your Autonome consultation request ${bookingReference}`;
+}
+
+function buildBookingEmailBody(booking: BookingEmailRecord): string {
+  const baseBody = booking.drafted_email?.trim() || '';
+  const footer = `\n\nBooking reference: ${booking.processing_id}\nReply directly to this email to continue scheduling with Autonome.`;
+  return `${baseBody}${footer}`;
+}
+
+async function persistConversationTurn(
+  supabase: SupabaseClient,
+  booking: BookingEmailRecord,
+  threadId: string,
+  content: string
+): Promise<void> {
+  if (!booking.id) {
+    return;
+  }
+
+  try {
+    const { data: existing, error: fetchError } = await supabase
+      .from('email_conversations')
+      .select('id, messages, turns_count')
+      .eq('thread_id', threadId)
+      .maybeSingle<EmailConversationRecord>();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const messageEntry = {
+      direction: 'outbound',
+      content,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        source: 'slack_approval',
+      },
+    };
+
+    if (existing) {
+      const messages = Array.isArray(existing.messages) ? [...existing.messages, messageEntry] : [messageEntry];
+      await supabase
+        .from('email_conversations')
+        .update({
+          messages,
+          turns_count: (existing.turns_count || 0) + 1,
+          last_outbound_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+      return;
+    }
+
+    await supabase.from('email_conversations').insert({
+      booking_inquiry_id: booking.id,
+      thread_id: threadId,
+      turns_count: 1,
+      messages: [messageEntry],
+      conversation_stage: 'gathering_info',
+      last_outbound_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.warn('Failed to persist approved outbound conversation turn:', error);
+  }
+}
+
+async function sendApprovedBookingEmail(bookingId: string): Promise<void> {
+  const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+  const emailService = await serviceManager.getService<Resend>('email');
+  const emailConfig = getServiceConfig('email');
+
+  if (!supabase) {
+    throw new Error('Database service not available');
+  }
+
+  if (!emailService) {
+    throw new Error('Email service not available');
+  }
+
+  const { data: booking, error } = await supabase
+    .from('booking_inquiries')
+    .select('id, processing_id, email_from, customer_name, company_name, drafted_email, email_thread_id')
+    .eq('processing_id', bookingId)
+    .single<BookingEmailRecord>();
+
+  if (error || !booking) {
+    throw new Error(`Booking not found for email send: ${error?.message || bookingId}`);
+  }
+
+  if (!booking.drafted_email?.trim()) {
+    throw new Error(`No drafted email content available for booking ${bookingId}`);
+  }
+
+  const threadToken = booking.email_thread_id?.trim() || `booking-thread:${booking.processing_id}`;
+
+  await emailService.emails.send({
+    from: emailConfig.fromAddress,
+    to: [booking.email_from],
+    subject: buildBookingEmailSubject(booking),
+    text: buildBookingEmailBody(booking),
+    replyTo: emailConfig.fromAddress,
+  });
+
+  await persistConversationTurn(supabase, booking, threadToken, booking.drafted_email);
+
+  const { error: updateError } = await supabase
+    .from('booking_inquiries')
+    .update({
+      status: 'sent',
+      email_thread_id: threadToken,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('processing_id', bookingId);
+
+  if (updateError) {
+    logger.error(`Email sent but failed to update status for booking ${bookingId}:`, updateError);
+  }
 }
 
 /**
@@ -540,6 +684,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
 
       let responseText = '';
       const updateData: BookingUpdateData = { updated_at: new Date().toISOString() };
+      let shouldSendApprovedEmail = false;
 
       // Resolve real channel ID before using it
       const realChannelId = resolveRealChannelId(
@@ -552,7 +697,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
           updateData.status = 'email_approved';
           responseText = '✅ Email approved! Customer will be contacted shortly.';
 
-          // TODO: Send the actual email here
+          shouldSendApprovedEmail = true;
           logger.info(`Email approved for booking ${bookingId}`);
           break;
 
@@ -656,6 +801,30 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
         logger.info('Follow-up message posted successfully');
       } catch (slackError) {
         logger.error('Failed to post follow-up message to Slack:', slackError);
+      }
+
+      if (shouldSendApprovedEmail && bookingId) {
+        try {
+          await sendApprovedBookingEmail(bookingId);
+          await slack.chat.postMessage({
+            channel: followUpChannelId,
+            text: `Email sent successfully from ${getServiceConfig('email').fromAddress} to the customer for booking ${bookingId}.`,
+            thread_ts: payload.message?.ts || payload.message_ts,
+          });
+          logger.info(`Approved email sent for booking ${bookingId}`);
+        } catch (emailError) {
+          logger.error(`Failed to send approved email for booking ${bookingId}:`, emailError);
+
+          try {
+            await slack.chat.postMessage({
+              channel: followUpChannelId,
+              text: `Email send failed for booking ${bookingId}. Check RESEND_API_KEY and EMAIL_FROM_ADDRESS, then retry.`,
+              thread_ts: payload.message?.ts || payload.message_ts,
+            });
+          } catch (slackError) {
+            logger.error('Failed to post email failure message to Slack:', slackError);
+          }
+        }
       }
     } else {
       logger.warn('Unknown interaction type or missing actions');

@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction, type Application } from 'express';
 import type { Server } from 'http';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
@@ -16,6 +17,24 @@ import calendarAvailabilityControlsRouter from './src/api/calendar-availability-
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function resolvePublicDir(): string {
+  const candidatePaths: [string, string, string] = [
+    path.join(__dirname, 'public'),
+    path.join(__dirname, '..', '..', 'backend', 'public'),
+    path.join(process.cwd(), 'backend', 'public'),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    if (existsSync(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  return candidatePaths[0];
+}
+
+const publicDir = resolvePublicDir();
 
 const app: Application = express();
 const PORT = process.env['PORT'] ? parseInt(process.env['PORT']) : 3001;
@@ -44,11 +63,22 @@ interface SystemInfo {
   environment: string;
 }
 
+interface RequestWithRawBody extends Request {
+  rawBody?: string;
+}
+
+function captureRawBody(req: Request, _res: Response, buffer: Buffer): void {
+  const requestWithRawBody = req as RequestWithRawBody;
+  if (buffer.length > 0) {
+    requestWithRawBody.rawBody = buffer.toString('utf8');
+  }
+}
+
 // Security middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb', verify: captureRawBody }));
+app.use(express.urlencoded({ extended: true, verify: captureRawBody }));
 
 /**
  * Health check endpoint
@@ -228,16 +258,34 @@ app.use('/api/calendar', calendarAvailabilityRouter);
 app.use('/api/calendar', calendarAvailabilityControlsRouter);
 
 // Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(publicDir, {
+    etag: process.env['NODE_ENV'] === 'production',
+    lastModified: process.env['NODE_ENV'] === 'production',
+    maxAge: process.env['NODE_ENV'] === 'production' ? '1h' : 0,
+    setHeaders: (res): void => {
+      if (process.env['NODE_ENV'] !== 'production') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  })
+);
 
 // Default route serves booking form
 app.get('/', (_req: Request, res: Response): void => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// Embed route serves the same booking UI in a compact mode suitable for modals/iframes
+app.get('/embed', (_req: Request, res: Response): void => {
+  res.sendFile(path.join(publicDir, 'index.html'));
 });
 
 // Admin route for calendar management
 app.get('/admin', (_req: Request, res: Response): void => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
 // Debug: Log all requests to help identify Slack webhook URL

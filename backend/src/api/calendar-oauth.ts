@@ -8,11 +8,19 @@
 import { Router, type Request, type Response } from 'express';
 import { google } from 'googleapis';
 import { serviceManager } from '../services/serviceManager.js';
+import { ensureCalendarAccountsTable, isCalendarAccountsMissing } from '../services/calendar/calendarAccountsSchema.js';
 import { getServiceConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { CalendarService } from '../services/calendar/CalendarService.js';
 
 const router = Router();
+
+async function refreshCalendarRuntimeState(): Promise<void> {
+  await serviceManager.reinitializeService('calendar');
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  calendarService?.invalidateAvailabilityCache();
+}
 
 /**
  * Authorization Initiation Endpoint
@@ -102,6 +110,12 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
       throw new Error('Database service not available');
     }
 
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      throw new Error(tableStatus.reason || 'calendar_accounts table is unavailable');
+    }
+
     // Check if calendar already exists
     const { data: existingCalendar } = await supabase
       .from('calendar_accounts')
@@ -137,10 +151,11 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
       throw insertError;
     }
 
-    logger.info(`✅ Successfully connected calendar: ${calendarEmail}`);
+      logger.info(`✅ Successfully connected calendar: ${calendarEmail}`);
+      await refreshCalendarRuntimeState();
 
-    // Redirect to admin page with success parameters
-    res.redirect(`/admin?connected=true&email=${encodeURIComponent(calendarEmail)}`);
+      // Redirect to admin page with success parameters
+      res.redirect(`/admin?connected=true&email=${encodeURIComponent(calendarEmail)}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('OAuth callback error:', errorMessage);
@@ -171,16 +186,52 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { data: calendars, error } = await supabase
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      res.json({
+        calendars: [],
+        total: 0,
+        max_allowed: 7,
+        user_email,
+        warning: 'Calendar storage is not fully configured yet',
+        details: tableStatus.reason,
+      });
+      return;
+    }
+
+    const { data: rawCalendars, error } = await supabase
       .from('calendar_accounts')
-      .select('id, calendar_email, is_primary, priority, is_active, created_at, webhook_channel_id, webhook_resource_id, webhook_expires_at')
+      .select('*')
       .eq('user_email', user_email)
       .eq('is_active', true)
       .order('priority', { ascending: false });
 
     if (error) {
+      if (isCalendarAccountsMissing(error)) {
+        res.json({
+          calendars: [],
+          total: 0,
+          max_allowed: 7,
+          user_email,
+          warning: 'calendar_accounts table was missing and could not be read',
+        });
+        return;
+      }
       throw error;
     }
+
+    const calendars = (rawCalendars || []).map((calendar: any) => ({
+      id: calendar.id,
+      calendar_email: calendar.calendar_email,
+      is_primary: Boolean(calendar.is_primary),
+      priority: typeof calendar.priority === 'number' ? calendar.priority : 0,
+      is_active: Boolean(calendar.is_active),
+      created_at: calendar.created_at,
+      webhook_channel_id: calendar.webhook_channel_id ?? null,
+      webhook_resource_id: calendar.webhook_resource_id ?? null,
+      webhook_expires_at: calendar.webhook_expires_at ?? null,
+    }));
 
     res.json({
       calendars: calendars || [],
@@ -212,6 +263,16 @@ router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void
       return;
     }
 
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      res.status(503).json({
+        error: 'Calendar storage is unavailable',
+        details: tableStatus.reason,
+      });
+      return;
+    }
+
     // Soft delete (set is_active = false)
     const { error } = await supabase
       .from('calendar_accounts')
@@ -222,10 +283,11 @@ router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void
       throw error;
     }
 
-    logger.info(`Calendar account ${id} disconnected`);
+      logger.info(`Calendar account ${id} disconnected`);
+      await refreshCalendarRuntimeState();
 
-    res.json({
-      success: true,
+      res.json({
+        success: true,
       message: 'Calendar disconnected successfully',
       calendar_id: id,
     });

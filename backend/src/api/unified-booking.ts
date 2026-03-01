@@ -1,6 +1,8 @@
 import express, { type Router, type Request, type Response } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WebClient } from '@slack/web-api';
+import type OpenAI from 'openai';
+import type { Resend } from 'resend';
 import { serviceManager } from '../services/serviceManager.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
@@ -29,6 +31,244 @@ interface BookingData {
  */
 interface EmergencyResult extends Partial<BookingResponse> {
   processing_id?: string;
+}
+
+interface InboundEmailPayload {
+  from: string;
+  subject?: string;
+  text?: string;
+  html?: string;
+  thread_id?: string;
+}
+
+interface BookingLookupRecord {
+  id?: string;
+  processing_id: string;
+  email_from: string;
+  customer_name: string | null;
+  company_name: string | null;
+  status: string;
+  email_thread_id?: string | null;
+  email_body?: string | null;
+  drafted_email?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+interface EmailConversationRecord {
+  id: string;
+  messages: unknown[];
+  turns_count: number | null;
+}
+
+function extractBookingIdFromText(...values: Array<string | undefined>): string | null {
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+
+    const match = value.match(/booking_[a-z0-9_]+/i);
+    if (match?.[0]) {
+      return match[0];
+    }
+  }
+
+  return null;
+}
+
+function getInboundEmailBody(payload: InboundEmailPayload): string {
+  const textBody = payload.text?.trim();
+  if (textBody) {
+    return textBody;
+  }
+
+  const htmlBody = payload.html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return htmlBody || '';
+}
+
+function shouldAutoApproveInboundReply(replyBody: string): boolean {
+  if (process.env['AUTO_APPROVE_BOOKING_REPLIES'] === 'false') {
+    return false;
+  }
+
+  const normalized = replyBody.toLowerCase();
+  const blockedSignals = [
+    'price',
+    'pricing',
+    'contract',
+    'legal',
+    'nda',
+    'invoice',
+    'refund',
+    'cancel',
+    'complaint',
+    'issue',
+    'problem',
+    'urgent',
+    'angry',
+    'frustrated',
+    'stop',
+    'unsubscribe',
+    'human',
+    'call me',
+  ];
+
+  if (blockedSignals.some((signal) => normalized.includes(signal))) {
+    return false;
+  }
+
+  return replyBody.trim().length <= 500;
+}
+
+function buildAutoReplyEmailSubject(booking: BookingLookupRecord): string {
+  const companyName = booking.company_name?.trim();
+  const bookingReference = `[${booking.processing_id}]`;
+
+  if (companyName) {
+    return `Re: Your Autonome consultation request for ${companyName} ${bookingReference}`;
+  }
+
+  return `Re: Your Autonome consultation request ${bookingReference}`;
+}
+
+function buildAutoReplyEmailBody(booking: BookingLookupRecord, draft: string): string {
+  return `${draft.trim()}\n\nBooking reference: ${booking.processing_id}\nReply directly to continue scheduling with Autonome.`;
+}
+
+async function generateInboundReplyDraft(
+  openai: OpenAI,
+  booking: BookingLookupRecord,
+  inboundMessage: string
+): Promise<string> {
+  const openaiConfig = getServiceConfig('openai');
+  const priorDraft = booking.drafted_email?.trim();
+
+  const completion = await openai.chat.completions.create({
+    model: openaiConfig.model || 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are the Autonome booking AI. Continue an active scheduling conversation by email.
+
+Requirements:
+- Keep the tone professional, warm, and concise
+- Answer the customer's latest message directly
+- Move the conversation toward confirming a suitable consultation time
+- If the customer suggests timing constraints, acknowledge them and propose the next step
+- Do not mention internal tools, Slack, or approvals
+- Sign as "The Autonome Team"
+- Return plain email body text only`,
+      },
+      {
+        role: 'user',
+        content: `Customer name: ${booking.customer_name || 'Customer'}
+Company: ${booking.company_name || 'Not provided'}
+Customer email: ${booking.email_from}
+Original inquiry:
+${booking.email_body || 'Not available'}
+
+Previous outbound draft:
+${priorDraft || 'None yet'}
+
+Latest inbound reply:
+${inboundMessage}
+
+Write the next best email response from the booking AI.`,
+      },
+    ],
+    temperature: 0.3,
+    max_tokens: 500,
+  });
+
+  const draftedReply = completion.choices[0]?.message?.content?.trim();
+  if (!draftedReply) {
+    throw new Error('Empty AI draft generated for inbound reply');
+  }
+
+  return draftedReply;
+}
+
+async function sendAutomatedBookingReply(
+  booking: BookingLookupRecord,
+  draft: string
+): Promise<void> {
+  const emailService = await serviceManager.getService<Resend>('email');
+  const emailConfig = getServiceConfig('email');
+
+  if (!emailService) {
+    throw new Error('Email service not available');
+  }
+
+  await emailService.emails.send({
+    from: emailConfig.fromAddress,
+    to: [booking.email_from],
+    subject: buildAutoReplyEmailSubject(booking),
+    text: buildAutoReplyEmailBody(booking, draft),
+    replyTo: emailConfig.fromAddress,
+  });
+}
+
+async function persistConversationTurn(
+  supabase: SupabaseClient,
+  booking: BookingLookupRecord,
+  threadId: string,
+  direction: 'inbound' | 'outbound',
+  content: string,
+  metadata: Record<string, unknown> = {}
+): Promise<void> {
+  if (!booking.id) {
+    return;
+  }
+
+  try {
+    const { data: existing, error: fetchError } = await supabase
+      .from('email_conversations')
+      .select('id, messages, turns_count')
+      .eq('thread_id', threadId)
+      .maybeSingle<EmailConversationRecord>();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const messageEntry = {
+      direction,
+      content,
+      timestamp: new Date().toISOString(),
+      metadata,
+    };
+
+    if (existing) {
+      const messages = Array.isArray(existing.messages) ? [...existing.messages, messageEntry] : [messageEntry];
+      const turnsCount = (existing.turns_count || 0) + 1;
+
+      const updatePayload: Record<string, unknown> = {
+        messages,
+        turns_count: turnsCount,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (direction === 'inbound') {
+        updatePayload['last_inbound_at'] = new Date().toISOString();
+      } else {
+        updatePayload['last_outbound_at'] = new Date().toISOString();
+      }
+
+      await supabase.from('email_conversations').update(updatePayload).eq('id', existing.id);
+      return;
+    }
+
+    await supabase.from('email_conversations').insert({
+      booking_inquiry_id: booking.id,
+      thread_id: threadId,
+      turns_count: 1,
+      messages: [messageEntry],
+      conversation_stage: 'gathering_info',
+      last_inbound_at: direction === 'inbound' ? new Date().toISOString() : null,
+      last_outbound_at: direction === 'outbound' ? new Date().toISOString() : null,
+    });
+  } catch (error) {
+    logger.warn('Failed to persist email conversation turn:', error);
+  }
 }
 
 /**
@@ -271,10 +511,325 @@ router.get('/service-status', async (_req: Request, res: Response): Promise<void
 });
 
 /**
+ * Inbound email reply webhook
+ * Accepts replies from the approved outbound booking email thread.
+ */
+router.post('/inbound-email', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const configuredSecret = process.env['INBOUND_EMAIL_WEBHOOK_SECRET'];
+    const providedSecret = req.headers['x-booking-webhook-secret'];
+
+    if (
+      configuredSecret &&
+      (typeof providedSecret !== 'string' || providedSecret !== configuredSecret)
+    ) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const payload = req.body as Partial<InboundEmailPayload>;
+    const from = payload.from?.trim().toLowerCase();
+    const replyBody = getInboundEmailBody(payload as InboundEmailPayload);
+
+    if (!from || !replyBody) {
+      res.status(400).json({
+        success: false,
+        error: 'from and email body are required',
+      });
+      return;
+    }
+
+    const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+    if (!supabase) {
+      throw new Error('Supabase service not available');
+    }
+
+    const explicitBookingId = extractBookingIdFromText(payload.subject, payload.text, payload.html);
+    let booking: BookingLookupRecord | null = null;
+
+    if (payload.thread_id?.trim()) {
+      const { data } = await supabase
+        .from('booking_inquiries')
+        .select('id, processing_id, email_from, customer_name, company_name, status, email_thread_id, email_body, drafted_email, metadata')
+        .eq('email_thread_id', payload.thread_id.trim())
+        .maybeSingle<BookingLookupRecord>();
+
+      booking = data;
+    }
+
+    if (!booking && explicitBookingId) {
+      const { data } = await supabase
+        .from('booking_inquiries')
+        .select('id, processing_id, email_from, customer_name, company_name, status, email_thread_id, email_body, drafted_email, metadata')
+        .eq('processing_id', explicitBookingId)
+        .maybeSingle<BookingLookupRecord>();
+
+      booking = data;
+    }
+
+    if (!booking) {
+      const { data } = await supabase
+        .from('booking_inquiries')
+        .select('id, processing_id, email_from, customer_name, company_name, status, email_thread_id, email_body, drafted_email, metadata')
+        .eq('email_from', from)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<BookingLookupRecord>();
+
+      booking = data;
+    }
+
+    if (!booking) {
+      logger.warn('Inbound email could not be matched to a booking', {
+        from,
+        subject: payload.subject,
+      });
+
+      res.status(404).json({
+        success: false,
+        error: 'No matching booking found',
+      });
+      return;
+    }
+
+    const conversationHistory = Array.isArray(booking.metadata?.['conversation_log'])
+      ? [...(booking.metadata?.['conversation_log'] as unknown[])]
+      : [];
+
+    conversationHistory.push({
+      direction: 'inbound',
+      content: replyBody,
+      timestamp: new Date().toISOString(),
+      subject: payload.subject || null,
+      thread_id: payload.thread_id || null,
+    });
+
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      status: 'processing',
+      metadata: {
+        ...(booking.metadata || {}),
+        conversation_log: conversationHistory,
+      },
+    };
+
+    if (payload.thread_id?.trim()) {
+      updateData['email_thread_id'] = payload.thread_id.trim();
+    }
+
+    const { error: updateError } = await supabase
+      .from('booking_inquiries')
+      .update(updateData)
+      .eq('processing_id', booking.processing_id);
+
+    if (updateError) {
+      throw new Error(`Failed to update booking for inbound email: ${updateError.message}`);
+    }
+
+    const activeThreadId = payload.thread_id?.trim() || booking.email_thread_id || booking.processing_id;
+    await persistConversationTurn(supabase, booking, activeThreadId, 'inbound', replyBody, {
+      subject: payload.subject || null,
+    });
+
+    const slack = await serviceManager.getService<WebClient>('slack');
+    const openai = await serviceManager.getService<OpenAI>('openai');
+    let aiDraft: string | null = null;
+    let autoApproved = false;
+
+    if (openai) {
+      try {
+        aiDraft = await generateInboundReplyDraft(openai, booking, replyBody);
+
+        const updatedConversationHistory = [
+          ...conversationHistory,
+          {
+            direction: 'outbound_draft',
+            content: aiDraft,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+
+        const { error: draftUpdateError } = await supabase
+          .from('booking_inquiries')
+          .update({
+            drafted_email: aiDraft,
+            status: 'draft_created',
+            updated_at: new Date().toISOString(),
+            metadata: {
+              ...(booking.metadata || {}),
+              conversation_log: updatedConversationHistory,
+            },
+          })
+          .eq('processing_id', booking.processing_id);
+
+        if (draftUpdateError) {
+          throw new Error(`Failed to save AI draft: ${draftUpdateError.message}`);
+        }
+
+        if (shouldAutoApproveInboundReply(replyBody)) {
+          await sendAutomatedBookingReply(booking, aiDraft);
+          autoApproved = true;
+          await persistConversationTurn(supabase, booking, activeThreadId, 'outbound', aiDraft, {
+            auto_approved: true,
+          });
+
+          const autoApprovedConversationHistory = [
+            ...updatedConversationHistory,
+            {
+              direction: 'outbound_sent',
+              content: aiDraft,
+              timestamp: new Date().toISOString(),
+              auto_approved: true,
+            },
+          ];
+
+          const { error: sentUpdateError } = await supabase
+            .from('booking_inquiries')
+            .update({
+              status: 'sent',
+              updated_at: new Date().toISOString(),
+              metadata: {
+                ...(booking.metadata || {}),
+                conversation_log: autoApprovedConversationHistory,
+                last_auto_approved_at: new Date().toISOString(),
+              },
+            })
+            .eq('processing_id', booking.processing_id);
+
+          if (sentUpdateError) {
+            throw new Error(`Failed to save auto-approved send status: ${sentUpdateError.message}`);
+          }
+        }
+      } catch (aiError) {
+        logger.error(`Failed to generate AI follow-up for booking ${booking.processing_id}:`, aiError);
+      }
+    }
+
+    if (slack) {
+      const channelId = getServiceConfig('slack').channelId;
+      const blocks: any[] = [
+        {
+          type: 'section' as const,
+          text: {
+            type: 'mrkdwn' as const,
+            text: `*Inbound Booking Reply Received*\n\n*Booking ID:* ${booking.processing_id}\n*Customer:* ${booking.customer_name || 'Unknown'}\n*Email:* ${booking.email_from}`,
+          },
+        },
+        {
+          type: 'section' as const,
+          text: {
+            type: 'mrkdwn' as const,
+            text: `*Reply Message:*\n${replyBody.slice(0, 2800)}`,
+          },
+        },
+      ];
+
+      if (aiDraft) {
+        blocks.push(
+          {
+            type: 'divider' as const,
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*AI Booking Agent Draft Reply:*\n\n${aiDraft.slice(0, 2800)}`,
+            },
+          },
+          {
+            type: 'actions' as const,
+            elements: [
+              {
+                type: 'button' as const,
+                text: { type: 'plain_text' as const, text: 'Approve AI Reply' },
+                style: 'primary' as const,
+                action_id: 'approve_email',
+                value: booking.processing_id,
+              },
+              {
+                type: 'button' as const,
+                text: { type: 'plain_text' as const, text: 'Revise AI Reply' },
+                action_id: 'revise_email',
+                value: booking.processing_id,
+              },
+              {
+                type: 'button' as const,
+                text: { type: 'plain_text' as const, text: 'Human Takeover' },
+                style: 'danger' as const,
+                action_id: 'human_takeover',
+                value: booking.processing_id,
+              },
+            ],
+          }
+        );
+      }
+
+      if (autoApproved && aiDraft) {
+        blocks.push(
+          {
+            type: 'divider' as const,
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*Auto-Approved by Booking AI Flow*\nThis reply was sent automatically from ${getServiceConfig('email').fromAddress} because it matched the low-risk scheduling rules.`,
+            },
+          }
+        );
+      }
+
+      await slack.chat.postMessage({
+        channel: channelId,
+        text: autoApproved
+          ? `Inbound booking reply received and the AI automatically sent the next response for ${booking.processing_id}`
+          : aiDraft
+            ? `Inbound booking reply received and AI drafted the next response for ${booking.processing_id}`
+            : `Inbound booking reply received for ${booking.processing_id}`,
+        blocks,
+      });
+    }
+
+    logger.info('Inbound email processed successfully', {
+      bookingId: booking.processing_id,
+      from,
+    });
+
+    res.json({
+      success: true,
+      booking_id: booking.processing_id,
+      status: autoApproved ? 'sent' : 'processing',
+      auto_approved: autoApproved,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Inbound email processing error:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: errorMessage,
+    });
+  }
+});
+
+/**
  * Slack debugging endpoint
  */
 router.post('/debug-slack', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const debugSecret = process.env['BOOKING_ADMIN_SECRET'];
+    const requestSecret = _req.headers['x-booking-admin-secret'];
+
+    if (
+      process.env['NODE_ENV'] === 'production' &&
+      (!debugSecret || typeof requestSecret !== 'string' || requestSecret !== debugSecret)
+    ) {
+      res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+      });
+      return;
+    }
+
     logger.info('=== SLACK DEBUG ENDPOINT CALLED ===');
 
     const slack = await serviceManager.getService<WebClient>('slack');

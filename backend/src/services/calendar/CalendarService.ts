@@ -12,6 +12,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { GoogleCalendarProvider, GoogleCalendarConfig } from './providers/GoogleCalendarProvider.js';
+import { ensureCalendarAccountsTable } from './calendarAccountsSchema.js';
 import {
   ICalendarProvider,
   TimeSlot,
@@ -71,6 +72,7 @@ export class CalendarService {
   private providers: Map<string, ICalendarProvider> = new Map();
   private availabilityCache: Map<string, AvailabilityCacheEntry> = new Map();
   private cacheTTLMinutes = 15; // Configurable via YAML in production
+  private availabilityUserEmail: string | null = null;
 
   constructor(
     private supabase: SupabaseClient,
@@ -81,6 +83,15 @@ export class CalendarService {
    * Initialize all active calendar providers from database
    */
   async initializeProviders(): Promise<void> {
+    const tableStatus = await ensureCalendarAccountsTable(this.supabase);
+
+    if (!tableStatus.ready) {
+      console.warn(
+        `Calendar accounts table unavailable, continuing without calendar providers: ${tableStatus.reason || 'unknown reason'}`
+      );
+      return;
+    }
+
     const { data: accounts, error } = await this.supabase
       .from('calendar_accounts')
       .select('*')
@@ -97,10 +108,21 @@ export class CalendarService {
       return;
     }
 
+    this.providers.clear();
+    this.availabilityUserEmail = null;
     console.log(`Initializing ${accounts.length} calendar provider(s)...`);
 
     for (const account of accounts as CalendarAccount[]) {
       try {
+        if (!this.availabilityUserEmail && account.user_email) {
+          this.availabilityUserEmail = account.user_email;
+        }
+
+        if (!account.oauth_credentials?.access_token || !account.oauth_credentials?.refresh_token) {
+          console.warn(`Skipping calendar without OAuth credentials: ${account.calendar_email}`);
+          continue;
+        }
+
         if (account.calendar_type === 'google') {
           const provider = new GoogleCalendarProvider(
             account.id,
@@ -173,7 +195,7 @@ export class CalendarService {
     const intersectedSlots = this.intersectAvailabilities(allAvailabilities);
 
     // Apply availability controls: blackouts and working hours
-    const userEmail = Array.from(this.providers.values())[0]?.providerId || 'dev@autonome.us';
+    const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
     const filteredByBlackouts = await this.filterByBlackouts(intersectedSlots, userEmail, options.startDate, options.endDate);
     const finalSlots = await this.filterByWorkingHours(filteredByBlackouts, userEmail);
 
@@ -546,6 +568,13 @@ export class CalendarService {
   }
 
   /**
+   * Public cache invalidation hook for admin-side schedule updates
+   */
+  public invalidateAvailabilityCache(): void {
+    this.clearAvailabilityCache();
+  }
+
+  /**
    * Filter slots by blackout periods
    * Removes any slots that overlap with active blackout periods
    */
@@ -576,12 +605,37 @@ export class CalendarService {
         return slots;
       }
 
-      console.log(`Filtering ${slots.length} slots by ${blackouts.length} blackout period(s)`);
+      const validBlackouts = blackouts.filter((blackout) => {
+        const blackoutStart = new Date(blackout.start_time);
+        const blackoutEnd = new Date(blackout.end_time);
+        const hasValidDates =
+          !Number.isNaN(blackoutStart.getTime()) &&
+          !Number.isNaN(blackoutEnd.getTime()) &&
+          blackoutEnd > blackoutStart;
+        const plausibleRange =
+          blackoutStart.getUTCFullYear() >= 2000 &&
+          blackoutEnd.getUTCFullYear() >= 2000;
+
+        if (!hasValidDates || !plausibleRange) {
+          console.warn(
+            `Ignoring invalid blackout period ${blackout.id ?? 'unknown'} for ${userEmail}`
+          );
+          return false;
+        }
+
+        return true;
+      });
+
+      if (validBlackouts.length === 0) {
+        return slots;
+      }
+
+      console.log(`Filtering ${slots.length} slots by ${validBlackouts.length} blackout period(s)`);
 
       // Filter out slots that overlap with any blackout period
       const filteredSlots = slots.filter((slot) => {
         // Check if this slot overlaps with any blackout
-        const hasOverlap = blackouts.some((blackout) => {
+        const hasOverlap = validBlackouts.some((blackout) => {
           const blackoutStart = new Date(blackout.start_time);
           const blackoutEnd = new Date(blackout.end_time);
 

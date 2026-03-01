@@ -7,14 +7,14 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install root dependencies (without postinstall to avoid backend dependency issues)
-RUN npm install --omit=dev --ignore-scripts --no-audit
+RUN npm install --ignore-scripts --no-audit
 
 # Copy backend package files
 COPY backend/package*.json ./backend/
 
 # Install backend dependencies
 WORKDIR /app/backend
-RUN npm install --omit=dev --no-audit
+RUN npm install --no-audit
 
 # Copy backend source code
 COPY backend/ ./
@@ -22,8 +22,13 @@ COPY backend/ ./
 # Switch back to app directory
 WORKDIR /app
 
-# Copy any other necessary files
-COPY .railway-trigger ./
+# Copy shared source and config required for TypeScript build
+COPY src ./src
+COPY config ./config
+COPY tsconfig.json ./
+
+# Build the TypeScript server artifact
+RUN npm run build
 
 # Expose port
 EXPOSE 3001

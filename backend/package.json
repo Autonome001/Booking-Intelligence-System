@@ -5,8 +5,8 @@
   "description": "Enterprise-grade booking intelligence system with multi-calendar support",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "build": "tsc -p ../tsconfig.json",
+    "start": "node ../dist/backend/server.js",
     "dev": "tsx watch server.ts",
     "dev:node": "nodemon --exec tsx server.ts",
     "test": "jest",
