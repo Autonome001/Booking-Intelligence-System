@@ -26,23 +26,30 @@ export class ConfigLoader {
    * Resolve the configuration file path based on environment
    */
   private resolveConfigPath(): string {
-    const configDir = join(__dirname, '..', '..', 'config');
-    const envConfigPath = join(configDir, `${this.environment}.yaml`);
-    const defaultConfigPath = join(configDir, 'default.yaml');
+    const candidateDirs = [
+      join(__dirname, '..', '..', 'config'),
+      join(process.cwd(), 'config'),
+    ];
+    const attemptedPaths: string[] = [];
 
-    // Try environment-specific config first
-    if (existsSync(envConfigPath)) {
-      return envConfigPath;
+    for (const configDir of candidateDirs) {
+      const envConfigPath = join(configDir, `${this.environment}.yaml`);
+      const defaultConfigPath = join(configDir, 'default.yaml');
+
+      attemptedPaths.push(envConfigPath, defaultConfigPath);
+
+      // Try environment-specific config first
+      if (existsSync(envConfigPath)) {
+        return envConfigPath;
+      }
+
+      // Fall back to default config
+      if (existsSync(defaultConfigPath)) {
+        return defaultConfigPath;
+      }
     }
 
-    // Fall back to default config
-    if (existsSync(defaultConfigPath)) {
-      return defaultConfigPath;
-    }
-
-    throw new Error(
-      `Configuration file not found. Tried: ${envConfigPath}, ${defaultConfigPath}`
-    );
+    throw new Error(`Configuration file not found. Tried: ${attemptedPaths.join(', ')}`);
   }
 
   /**

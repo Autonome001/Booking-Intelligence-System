@@ -7,9 +7,9 @@
   <meta name="description" content="Manage connected Google Calendar accounts for Autonome booking system">
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="admin-page">
   <!-- Header -->
-  <header class="header">
+  <header class="header admin-header">
     <div class="container">
       <svg class="icon-xl" style="display: block; margin: 0 auto 1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -20,7 +20,7 @@
   </header>
 
   <!-- Main Content -->
-  <main class="container">
+  <main class="container admin-main">
     <!-- System Status Card -->
     <div class="card">
       <div class="card-header">
@@ -50,6 +50,7 @@
           Connected Calendars
         </h3>
         <p class="card-subtitle" id="calendar-count">Loading...</p>
+        <p id="calendar-warning" class="admin-inline-note hidden"></p>
       </div>
 
       <!-- Calendars Container -->
@@ -81,15 +82,66 @@
         <p class="card-subtitle">Control when you're available for bookings</p>
       </div>
 
+      <div class="admin-settings-panel">
+        <form id="display-settings-form">
+          <div class="admin-settings-header">
+            <div>
+              <h4>Booking Visibility Window</h4>
+              <p>Control how far into the future the public booking page is allowed to show availability.</p>
+            </div>
+            <div class="admin-days-pill">
+              <span id="display-window-days-value">20</span>
+              <span>days</span>
+            </div>
+          </div>
+
+          <input
+            type="range"
+            id="display-window-days"
+            min="7"
+            max="60"
+            step="1"
+            value="20"
+            class="admin-range"
+          >
+
+          <div class="admin-preset-row">
+            <button type="button" class="admin-preset-button" data-days="7">1 Week</button>
+            <button type="button" class="admin-preset-button" data-days="14">2 Weeks</button>
+            <button type="button" class="admin-preset-button" data-days="30">1 Month</button>
+            <button type="button" class="admin-preset-button" data-days="60">2 Months</button>
+          </div>
+
+          <div class="admin-settings-grid">
+            <div class="admin-setting-copy">
+              <label class="form-label" for="ai-concierge-enabled">AI Booking Concierge</label>
+              <p id="display-settings-summary" class="admin-settings-summary">Customers can browse the next 20 days of availability.</p>
+            </div>
+            <label class="admin-toggle-switch" for="ai-concierge-enabled">
+              <input type="checkbox" id="ai-concierge-enabled" checked>
+              <span class="admin-toggle-slider"></span>
+              <span class="admin-toggle-label">Show “Need a better time?” AI helper</span>
+            </label>
+          </div>
+
+          <button type="submit" id="save-display-settings-btn" class="btn btn-primary btn-sm">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Save Booking Display Settings
+          </button>
+        </form>
+      </div>
+
       <!-- Tab Navigation -->
       <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
-        <button id="blackouts-tab" class="tab-button active" onclick="switchTab('blackouts')">
+        <button type="button" id="blackouts-tab" class="tab-button active" data-tab="blackouts" onclick="switchTab('blackouts')">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
           </svg>
           Blackout Periods
         </button>
-        <button id="working-hours-tab" class="tab-button" onclick="switchTab('working-hours')">
+        <button type="button" id="working-hours-tab" class="tab-button" data-tab="working-hours" onclick="switchTab('working-hours')">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
@@ -142,7 +194,7 @@
       </div>
 
       <!-- Working Hours Tab Content -->
-      <div id="working-hours-content" class="tab-content" style="display: none;">
+      <div id="working-hours-content" class="tab-content hidden">
         <p style="color: var(--gray-600); margin-bottom: 1.5rem;">Define your standard working hours for each day of the week. Bookings will only be offered during these times.</p>
 
         <form id="working-hours-form">

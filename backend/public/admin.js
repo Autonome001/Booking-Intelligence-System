@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSystemStatus();
   await loadCalendars();
   setupConnectButton();
+  setupAvailabilityTabs();
+  setupDisplaySettingsForm();
+  await loadDisplaySettings();
+  switchTab('blackouts');
   checkOAuthCallback();
 });
 
@@ -88,6 +92,7 @@ async function loadSystemStatus() {
 async function loadCalendars() {
   const container = document.getElementById('calendars-container');
   const countDisplay = document.getElementById('calendar-count');
+  const warningDisplay = document.getElementById('calendar-warning');
   const connectBtn = document.getElementById('connect-btn');
 
   try {
@@ -100,8 +105,14 @@ async function loadCalendars() {
     const data = await response.json();
     connectedCalendars = data.calendars || [];
 
-    if (data.warning) {
-      showNotification('info', data.details ? `${data.warning}: ${data.details}` : data.warning);
+    if (warningDisplay) {
+      if (data.warning) {
+        warningDisplay.textContent = data.details ? `${data.warning}: ${data.details}` : data.warning;
+        warningDisplay.classList.remove('hidden');
+      } else {
+        warningDisplay.textContent = '';
+        warningDisplay.classList.add('hidden');
+      }
     }
 
     // Update count display
@@ -191,8 +202,8 @@ function createCalendarCard(calendar) {
 
   const webhookStatus = getWebhookStatus(calendar);
   const primaryBadge = calendar.is_primary
-    ? '<svg class="icon" style="color: var(--yellow-500);" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
-    : '<svg class="icon" style="color: var(--royal-blue-600);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>';
+    ? '<svg class="icon" style="color: var(--warning);" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
+    : '<svg class="icon" style="color: var(--electric-blue);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>';
 
   card.innerHTML = `
     <div class="calendar-account-icon">
@@ -202,7 +213,7 @@ function createCalendarCard(calendar) {
     <div class="calendar-account-info">
       <div class="calendar-account-email">
         ${calendar.calendar_email}
-        ${calendar.is_primary ? '<span style="color: var(--yellow-500); font-size: 0.875rem; margin-left: 0.5rem;">(Primary)</span>' : ''}
+        ${calendar.is_primary ? '<span style="color: var(--warning); font-size: 0.875rem; margin-left: 0.5rem;">(Primary)</span>' : ''}
       </div>
       <div class="calendar-account-meta">
         Connected: ${connectedDate} | Status: ${calendar.is_active ? '<span style="color: var(--success);">✓ Active</span>' : '<span style="color: var(--warning);">⚠ Inactive</span>'}
@@ -211,20 +222,22 @@ function createCalendarCard(calendar) {
     </div>
 
     <div class="calendar-account-actions">
-      <button
-        class="btn btn-secondary btn-sm"
-        onclick="refreshCalendar('${calendar.id}')"
-        title="Refresh webhook subscription"
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          onclick="refreshCalendar('${calendar.id}')"
+          title="Refresh webhook subscription"
       >
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
         <span>Refresh</span>
       </button>
-      <button
-        class="btn btn-danger btn-sm"
-        onclick="disconnectCalendar('${calendar.id}', '${calendar.calendar_email}')"
-        title="Disconnect this calendar"
+        <button
+          type="button"
+          class="btn btn-danger btn-sm"
+          onclick="disconnectCalendar('${calendar.id}', '${calendar.calendar_email}')"
+          title="Disconnect this calendar"
       >
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -357,6 +370,98 @@ function showNotification(type, message) {
 }
 
 // ============================================
+// BOOKING DISPLAY SETTINGS
+// ============================================
+function updateDisplayWindowPreview(days) {
+  const normalizedDays = Math.max(7, Math.min(60, parseInt(days, 10) || 20));
+  const daysValue = document.getElementById('display-window-days-value');
+  const summary = document.getElementById('display-settings-summary');
+
+  daysValue.textContent = normalizedDays;
+  summary.textContent = `Customers can browse the next ${normalizedDays} day${normalizedDays === 1 ? '' : 's'} of availability before the calendar stops offering later dates.`;
+
+  document.querySelectorAll('.admin-preset-button[data-days]').forEach((button) => {
+    button.classList.toggle('active', parseInt(button.dataset.days, 10) === normalizedDays);
+  });
+}
+
+async function loadDisplaySettings() {
+  try {
+    const response = await fetch(`/api/calendar/preferences?user_email=${encodeURIComponent(USER_EMAIL)}`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const settings = data.settings || {};
+    const rangeInput = document.getElementById('display-window-days');
+    const aiToggle = document.getElementById('ai-concierge-enabled');
+
+    rangeInput.value = settings.displayWindowDays || 20;
+    aiToggle.checked = settings.aiConciergeEnabled !== false;
+    updateDisplayWindowPreview(rangeInput.value);
+  } catch (error) {
+    console.error('Failed to load display settings:', error);
+    showNotification('error', 'Failed to load booking display settings');
+  }
+}
+
+function setupDisplaySettingsForm() {
+  const form = document.getElementById('display-settings-form');
+  const rangeInput = document.getElementById('display-window-days');
+
+  rangeInput.addEventListener('input', () => {
+    updateDisplayWindowPreview(rangeInput.value);
+  });
+
+  document.querySelectorAll('.admin-preset-button[data-days]').forEach((button) => {
+    button.addEventListener('click', () => {
+      rangeInput.value = button.dataset.days;
+      updateDisplayWindowPreview(rangeInput.value);
+    });
+  });
+
+  form.addEventListener('submit', saveDisplaySettings);
+}
+
+async function saveDisplaySettings(event) {
+  event.preventDefault();
+
+  const saveButton = document.getElementById('save-display-settings-btn');
+  const displayWindowDays = parseInt(document.getElementById('display-window-days').value, 10);
+  const aiConciergeEnabled = document.getElementById('ai-concierge-enabled').checked;
+
+  setButtonLoading(saveButton, true, 'Saving...');
+
+  try {
+    const response = await fetch('/api/calendar/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: USER_EMAIL,
+        display_window_days: displayWindowDays,
+        ai_concierge_enabled: aiConciergeEnabled,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to save booking display settings');
+    }
+
+    updateDisplayWindowPreview(result.settings?.displayWindowDays || displayWindowDays);
+    showNotification('success', 'Booking display settings saved');
+  } catch (error) {
+    console.error('Failed to save display settings:', error);
+    showNotification('error', error.message || 'Failed to save booking display settings');
+  } finally {
+    setButtonLoading(saveButton, false);
+  }
+}
+
+// ============================================
 // CHECK FOR OAUTH CALLBACK
 // ============================================
 function checkOAuthCallback() {
@@ -391,15 +496,26 @@ function checkOAuthCallback() {
 // AVAILABILITY SETTINGS - TAB SWITCHING
 // ============================================
 function switchTab(tabName) {
+  const allowedTabs = new Set(['blackouts', 'working-hours']);
+  const normalizedTabName = allowedTabs.has(tabName) ? tabName : 'blackouts';
+
   // Update tab buttons
   document.getElementById('blackouts-tab').classList.remove('active');
   document.getElementById('working-hours-tab').classList.remove('active');
-  document.getElementById(`${tabName}-tab`).classList.add('active');
+  document.getElementById(`${normalizedTabName}-tab`).classList.add('active');
 
   // Update tab content
-  document.getElementById('blackouts-content').style.display = 'none';
-  document.getElementById('working-hours-content').style.display = 'none';
-  document.getElementById(`${tabName}-content`).style.display = 'block';
+  document.getElementById('blackouts-content').classList.add('hidden');
+  document.getElementById('working-hours-content').classList.add('hidden');
+  document.getElementById(`${normalizedTabName}-content`).classList.remove('hidden');
+}
+
+function setupAvailabilityTabs() {
+  document.querySelectorAll('.tab-button[data-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      switchTab(button.dataset.tab);
+    });
+  });
 }
 
 // ============================================
@@ -448,7 +564,7 @@ async function loadBlackouts() {
             <p>${startDate.toLocaleString('en-US', formatOptions)} - ${endDate.toLocaleString('en-US', formatOptions)}</p>
             ${blackout.description ? `<p style="font-style: italic; margin-top: 0.25rem;">${blackout.description}</p>` : ''}
           </div>
-          <button onclick="deleteBlackout('${blackout.id}')" class="btn btn-secondary btn-sm" style="background: var(--error); color: white;">
+          <button type="button" onclick="deleteBlackout('${blackout.id}', this)" class="btn btn-secondary btn-sm" style="background: var(--error); color: white;">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
@@ -518,10 +634,37 @@ async function addBlackout(event) {
   }
 }
 
-async function deleteBlackout(blackoutId) {
+function setButtonLoading(button, isLoading, loadingText = 'Working...') {
+  if (!button) {
+    return;
+  }
+
+  if (isLoading) {
+    button.dataset.originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.classList.add('is-loading');
+    button.innerHTML = `
+      <span class="inline-spinner" aria-hidden="true"></span>
+      <span>${loadingText}</span>
+    `;
+    return;
+  }
+
+  button.disabled = false;
+  button.classList.remove('is-loading');
+
+  if (button.dataset.originalHtml) {
+    button.innerHTML = button.dataset.originalHtml;
+    delete button.dataset.originalHtml;
+  }
+}
+
+async function deleteBlackout(blackoutId, button = null) {
   if (!confirm('Are you sure you want to delete this blackout period?')) {
     return;
   }
+
+  setButtonLoading(button, true, 'Deleting...');
 
   try {
     const response = await fetch(`/api/calendar/blackouts/${blackoutId}`, {
@@ -529,7 +672,8 @@ async function deleteBlackout(blackoutId) {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to delete blackout');
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.error || 'Failed to delete blackout');
     }
 
     showNotification('success', 'Blackout period deleted');
@@ -537,7 +681,8 @@ async function deleteBlackout(blackoutId) {
 
   } catch (error) {
     console.error('Failed to delete blackout:', error);
-    showNotification('error', 'Failed to delete blackout period');
+    showNotification('error', error.message || 'Failed to delete blackout period');
+    setButtonLoading(button, false);
   }
 }
 

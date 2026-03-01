@@ -258,7 +258,20 @@ app.use('/api/calendar', calendarAvailabilityRouter);
 app.use('/api/calendar', calendarAvailabilityControlsRouter);
 
 // Serve static files from public directory
-app.use(express.static(publicDir));
+app.use(
+  express.static(publicDir, {
+    etag: process.env['NODE_ENV'] === 'production',
+    lastModified: process.env['NODE_ENV'] === 'production',
+    maxAge: process.env['NODE_ENV'] === 'production' ? '1h' : 0,
+    setHeaders: (res): void => {
+      if (process.env['NODE_ENV'] !== 'production') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  })
+);
 
 // Default route serves booking form
 app.get('/', (_req: Request, res: Response): void => {

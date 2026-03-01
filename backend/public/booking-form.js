@@ -3,28 +3,23 @@
 // ============================================
 let availabilitySlotsEnabled = false;
 let selectedSlot = null;
-let currentWeekOffset = 0; // 0 = current week, 1 = next week, etc.
+let currentWeekOffset = 0;
+let maxDisplayDays = 20;
+let aiConciergeEnabled = true;
+let bookingChatHistory = [];
+let isBookingChatLoading = false;
 
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
   applyDisplayMode();
-
-  // Check if availability display is enabled
-  await checkAvailabilityFeatureFlag();
-
-  // Set up form validation
   setupFormValidation();
-
-  // Set up character counter
   setupCharacterCounter();
-
-  // Set up form submission
   setupFormSubmission();
-
-  // Set up week navigation
   setupWeekNavigation();
+  setupBookingChat();
+  await checkAvailabilityFeatureFlag();
 });
 
 function applyDisplayMode() {
@@ -45,6 +40,16 @@ async function checkAvailabilityFeatureFlag() {
     const response = await fetch('/api/calendar/config/show-slots');
     const data = await response.json();
 
+    maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
+    aiConciergeEnabled = data.ai_concierge_enabled !== false;
+
+    const conciergeSection = document.getElementById('ai-concierge-section');
+    if (aiConciergeEnabled) {
+      conciergeSection.classList.remove('hidden');
+    } else {
+      conciergeSection.classList.add('hidden');
+    }
+
     if (data.enabled) {
       availabilitySlotsEnabled = true;
       document.getElementById('availability-section').classList.remove('hidden');
@@ -63,7 +68,6 @@ async function fetchAvailability(weekOffset) {
   const prevBtn = document.getElementById('prev-week');
   const nextBtn = document.getElementById('next-week');
 
-  // Show loading skeleton
   slotsContainer.innerHTML = `
     <div class="skeleton" style="height: 100px;"></div>
     <div class="skeleton" style="height: 100px;"></div>
@@ -77,15 +81,13 @@ async function fetchAvailability(weekOffset) {
     const response = await fetch(`/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`);
     const data = await response.json();
 
-    // Update week display
     const weekEnd = new Date(startDate);
     weekEnd.setDate(weekEnd.getDate() + 6);
     document.getElementById('week-display').textContent =
       `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
-    // Enable/disable navigation buttons
     prevBtn.disabled = weekOffset === 0;
-    nextBtn.disabled = false;
+    nextBtn.disabled = ((weekOffset + 1) * 7) >= maxDisplayDays;
 
     if (data.slots && data.slots.length > 0) {
       renderSlots(data.slots);
@@ -96,7 +98,7 @@ async function fetchAvailability(weekOffset) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
           </svg>
           <p style="font-weight: 500;">No available slots this week</p>
-          <p>Try next week or contact us directly</p>
+          <p>Try another visible week, or use the live booking chat below to find a better time.</p>
         </div>
       `;
     }
@@ -120,26 +122,45 @@ function renderSlots(slots) {
   const slotsContainer = document.getElementById('slots-container');
   slotsContainer.innerHTML = '';
 
-  slots.forEach(slot => {
+  slots.forEach((slot) => {
     const slotCard = createSlotCard(slot);
     slotsContainer.appendChild(slotCard);
   });
 }
 
+function syncSelectedSlotUI() {
+  document.querySelectorAll('.slot-card').forEach((card) => {
+    const matches = selectedSlot && card.dataset.slotStart === selectedSlot.start;
+    card.classList.toggle('selected', Boolean(matches));
+    const checkIcon = card.querySelector('.check-icon');
+    if (checkIcon) {
+      checkIcon.style.opacity = matches ? '1' : '0';
+    }
+  });
+
+  document.getElementById('selected-slot').value = selectedSlot ? JSON.stringify(selectedSlot) : '';
+}
+
+function selectSlot(slot) {
+  selectedSlot = slot;
+  syncSelectedSlotUI();
+}
+
 function createSlotCard(slot) {
   const card = document.createElement('div');
   card.className = 'slot-card';
+  card.dataset.slotStart = slot.start;
 
   const start = new Date(slot.start);
   const dateStr = start.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
   });
   const timeStr = start.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'America/New_York'
+    timeZone: 'America/New_York',
   });
 
   card.innerHTML = `
@@ -159,17 +180,7 @@ function createSlotCard(slot) {
   `;
 
   card.addEventListener('click', () => {
-    // Deselect all other slots
-    document.querySelectorAll('.slot-card').forEach(c => {
-      c.classList.remove('selected');
-      c.querySelector('.check-icon').style.opacity = '0';
-    });
-
-    // Select this slot
-    card.classList.add('selected');
-    card.querySelector('.check-icon').style.opacity = '1';
-    selectedSlot = slot;
-    document.getElementById('selected-slot').value = JSON.stringify(slot);
+    selectSlot(slot);
   });
 
   return card;
@@ -183,19 +194,173 @@ function setupWeekNavigation() {
     if (currentWeekOffset > 0) {
       currentWeekOffset--;
       fetchAvailability(currentWeekOffset);
-      // Clear selection when changing weeks
       selectedSlot = null;
-      document.getElementById('selected-slot').value = '';
+      syncSelectedSlotUI();
     }
   });
 
   document.getElementById('next-week')?.addEventListener('click', () => {
+    if (((currentWeekOffset + 1) * 7) >= maxDisplayDays) {
+      return;
+    }
+
     currentWeekOffset++;
     fetchAvailability(currentWeekOffset);
-    // Clear selection when changing weeks
     selectedSlot = null;
-    document.getElementById('selected-slot').value = '';
+    syncSelectedSlotUI();
   });
+}
+
+// ============================================
+// LIVE BOOKING CHAT
+// ============================================
+function getBookingChatContainer() {
+  return document.getElementById('booking-chat-thread');
+}
+
+function createChatMessageElement(role, content) {
+  const item = document.createElement('div');
+  item.className = `chat-message ${role}`;
+
+  const label = role === 'assistant' ? 'Booking AI' : 'You';
+  item.innerHTML = `
+    <div class="chat-message-label">${label}</div>
+    <div class="chat-bubble">${content.replace(/\n/g, '<br>')}</div>
+  `;
+
+  return item;
+}
+
+function appendChatMessage(role, content) {
+  const container = getBookingChatContainer();
+  const element = createChatMessageElement(role, content);
+  container.appendChild(element);
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderSuggestedChatSlots(suggestedSlots) {
+  if (!Array.isArray(suggestedSlots) || suggestedSlots.length === 0) {
+    return;
+  }
+
+  const container = getBookingChatContainer();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chat-message assistant';
+
+  const chips = suggestedSlots.map((slot) => `
+    <button type="button" class="assistant-suggestion-chip" data-slot='${JSON.stringify({
+      start: slot.start,
+      end: slot.end,
+      duration_minutes: slot.duration_minutes,
+    })}'>
+      ${slot.label}
+    </button>
+  `).join('');
+
+  wrapper.innerHTML = `
+    <div class="chat-message-label">Suggested Times</div>
+    <div class="assistant-suggestion-list">${chips}</div>
+  `;
+
+  container.appendChild(wrapper);
+  container.scrollTop = container.scrollHeight;
+
+  wrapper.querySelectorAll('.assistant-suggestion-chip').forEach((button) => {
+    button.addEventListener('click', () => {
+      const slot = JSON.parse(button.dataset.slot);
+      selectSlot(slot);
+      appendChatMessage('assistant', `I attached ${button.textContent.trim()} to your request. You can keep chatting to refine it further, or submit the form when you are ready.`);
+    });
+  });
+}
+
+function setBookingChatSendingState(isLoading) {
+  isBookingChatLoading = isLoading;
+  const sendButton = document.getElementById('send-booking-chat');
+  const input = document.getElementById('booking-chat-input');
+
+  sendButton.disabled = isLoading;
+  input.disabled = isLoading;
+  sendButton.classList.toggle('is-loading', isLoading);
+  sendButton.innerHTML = isLoading
+    ? `
+      <span class="inline-spinner" aria-hidden="true"></span>
+      <span>Thinking...</span>
+    `
+    : `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 2L11 13" />
+        <polyline points="22 2 15 22 11 13 2 9 22 2" />
+      </svg>
+      <span>Send</span>
+    `;
+}
+
+function setupBookingChat() {
+  const sendButton = document.getElementById('send-booking-chat');
+  const input = document.getElementById('booking-chat-input');
+  const container = getBookingChatContainer();
+
+  if (!sendButton || !input || !container) {
+    return;
+  }
+
+  bookingChatHistory = [];
+  container.innerHTML = '';
+  appendChatMessage('assistant', 'Tell me what timing would work better for you. I can search beyond the visible calendar and suggest the closest open times right here.');
+
+  sendButton.addEventListener('click', sendBookingChatMessage);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendBookingChatMessage();
+    }
+  });
+}
+
+async function sendBookingChatMessage() {
+  const input = document.getElementById('booking-chat-input');
+  const message = input.value.trim();
+
+  if (!message || isBookingChatLoading) {
+    return;
+  }
+
+  bookingChatHistory.push({ role: 'user', content: message });
+  appendChatMessage('user', message);
+  input.value = '';
+  setBookingChatSendingState(true);
+
+  try {
+    const response = await fetch('/api/calendar/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        history: bookingChatHistory,
+        duration_minutes: 30,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to reach the booking AI');
+    }
+
+    bookingChatHistory.push({ role: 'assistant', content: result.reply });
+    appendChatMessage('assistant', result.reply);
+    renderSuggestedChatSlots(result.suggested_slots || []);
+  } catch (error) {
+    console.error('Booking chat failed:', error);
+    const fallback = error.message || 'The booking AI is temporarily unavailable right now. You can try again, or submit your preferred timing in the form below.';
+    bookingChatHistory.push({ role: 'assistant', content: fallback });
+    appendChatMessage('assistant', fallback);
+  } finally {
+    setBookingChatSendingState(false);
+    input.focus();
+  }
 }
 
 // ============================================
@@ -206,10 +371,13 @@ function setupFormValidation() {
   const emailInput = document.getElementById('email');
   const messageInput = document.getElementById('message');
 
-  // Real-time validation
   nameInput.addEventListener('blur', () => validateField('name'));
   emailInput.addEventListener('blur', () => validateField('email'));
   messageInput.addEventListener('blur', () => validateField('message'));
+}
+
+function hasUserChatContext() {
+  return bookingChatHistory.some((message) => message.role === 'user');
 }
 
 function validateField(fieldName) {
@@ -232,6 +400,11 @@ function validateField(fieldName) {
   }
 
   if (fieldName === 'message') {
+    if (hasUserChatContext() && input.value.trim().length === 0) {
+      hideError(input, error);
+      return true;
+    }
+
     if (input.value.trim().length < 10) {
       showError(input, error, 'Please tell us more about your needs (at least 10 characters)');
       return false;
@@ -263,25 +436,33 @@ function setupCharacterCounter() {
   messageInput.addEventListener('input', () => {
     const count = messageInput.value.length;
     charCount.textContent = count;
-
-    if (count > 1900) {
-      charCount.style.color = 'var(--error)';
-    } else {
-      charCount.style.color = 'var(--gray-500)';
-    }
+    charCount.style.color = count > 1900 ? 'var(--error)' : 'var(--gray-500)';
   });
 }
 
 // ============================================
 // FORM SUBMISSION
 // ============================================
+function buildBookingChatTranscript() {
+  const turns = bookingChatHistory
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .slice(-8);
+
+  if (turns.length <= 1) {
+    return '';
+  }
+
+  return turns
+    .map((message) => `${message.role === 'assistant' ? 'Booking AI' : 'Customer'}: ${message.content}`)
+    .join('\n');
+}
+
 function setupFormSubmission() {
   const form = document.getElementById('booking-form');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
 
-    // Validate all fields
     const isNameValid = validateField('name');
     const isEmailValid = validateField('email');
     const isMessageValid = validateField('message');
@@ -290,7 +471,6 @@ function setupFormSubmission() {
       return;
     }
 
-    // Collect form data
     const formData = {
       name: document.getElementById('name').value.trim(),
       email: document.getElementById('email').value.trim(),
@@ -299,12 +479,19 @@ function setupFormSubmission() {
       message: document.getElementById('message').value.trim(),
     };
 
-    // Add selected slot if availability enabled
+    if (!formData.message && hasUserChatContext()) {
+      formData.message = 'The customer used the live booking chat to request a better time than the visible availability.';
+    }
+
+    const chatTranscript = buildBookingChatTranscript();
+    if (chatTranscript) {
+      formData.message = `${formData.message}\n\nLive booking chat transcript:\n${chatTranscript}`;
+    }
+
     if (selectedSlot) {
       formData.preferred_date = new Date(selectedSlot.start).toISOString();
     }
 
-    // Show loading state
     showLoading();
 
     try {
@@ -324,13 +511,9 @@ function setupFormSubmission() {
         showSuccess(result);
         form.reset();
         document.getElementById('char-count').textContent = '0';
-        if (selectedSlot) {
-          document.querySelectorAll('.slot-card').forEach(c => {
-            c.classList.remove('selected');
-            c.querySelector('.check-icon').style.opacity = '0';
-          });
-          selectedSlot = null;
-        }
+        selectedSlot = null;
+        syncSelectedSlotUI();
+        setupBookingChat();
       } else {
         showErrorMessage(result.error || 'Failed to submit booking request');
       }
@@ -345,6 +528,7 @@ function setupFormSubmission() {
 function showLoading() {
   document.getElementById('booking-form').classList.add('hidden');
   document.getElementById('availability-section')?.classList.add('hidden');
+  document.getElementById('ai-concierge-section')?.classList.add('hidden');
   document.getElementById('success-message').classList.add('hidden');
   document.getElementById('error-message').classList.add('hidden');
   document.getElementById('loading-state').classList.remove('hidden');
@@ -353,19 +537,21 @@ function showLoading() {
 function hideLoading() {
   document.getElementById('loading-state').classList.add('hidden');
   document.getElementById('booking-form').classList.remove('hidden');
+
   if (availabilitySlotsEnabled) {
     document.getElementById('availability-section').classList.remove('hidden');
+  }
+
+  if (aiConciergeEnabled) {
+    document.getElementById('ai-concierge-section').classList.remove('hidden');
   }
 }
 
 function showSuccess(result) {
   document.getElementById('booking-id-display').textContent = result.booking_id;
   document.getElementById('success-message').classList.remove('hidden');
-
-  // Scroll to top
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Auto-hide after 10 seconds
   setTimeout(() => {
     document.getElementById('success-message').classList.add('hidden');
   }, 10000);
@@ -374,11 +560,8 @@ function showSuccess(result) {
 function showErrorMessage(message) {
   document.getElementById('error-details').textContent = message;
   document.getElementById('error-message').classList.remove('hidden');
-
-  // Scroll to top
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Auto-hide after 8 seconds
   setTimeout(() => {
     document.getElementById('error-message').classList.add('hidden');
   }, 8000);

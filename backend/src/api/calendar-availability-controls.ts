@@ -2,8 +2,14 @@ import { Router, Request, Response } from 'express';
 import { serviceManager } from '../services/serviceManager.js';
 import { logger } from '../utils/logger.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { CalendarService } from '../services/calendar/CalendarService.js';
 
 const router = Router();
+
+async function invalidateCalendarAvailabilityCache(): Promise<void> {
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  calendarService?.invalidateAvailabilityCache();
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // BLACKOUT PERIODS ENDPOINTS
@@ -108,6 +114,7 @@ router.post('/blackouts', async (req: Request, res: Response): Promise<void> => 
     }
 
     logger.info('Blackout period created:', { id: data.id, title, user_email });
+    await invalidateCalendarAvailabilityCache();
 
     res.status(201).json({
       success: true,
@@ -152,6 +159,7 @@ router.delete('/blackouts/:id', async (req: Request, res: Response): Promise<voi
     }
 
     logger.info('Blackout period deleted:', { id });
+    await invalidateCalendarAvailabilityCache();
 
     res.json({
       success: true,
@@ -267,6 +275,7 @@ router.put('/working-hours', async (req: Request, res: Response): Promise<void> 
     }
 
     logger.info('Working hours updated:', { user_email, day_of_week });
+    await invalidateCalendarAvailabilityCache();
 
     res.json({
       success: true,
@@ -326,6 +335,7 @@ router.put('/working-hours/batch', async (req: Request, res: Response): Promise<
     }
 
     logger.info('Working hours batch updated:', { user_email, count: data.length });
+    await invalidateCalendarAvailabilityCache();
 
     res.json({
       success: true,
