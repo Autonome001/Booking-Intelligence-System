@@ -59,7 +59,18 @@ export interface EnvironmentValidation {
 }
 
 // Load environment variables from multiple potential locations
-const envPaths = ['.env', '../.env', '../../.env', '../../../.env'];
+const envPaths = [
+  '.env.local',
+  '.env',
+  '../.env.local',
+  '../.env',
+  '../../.env.local',
+  '../../.env',
+  '../../../.env.local',
+  '../../../.env',
+  '../../../../.env.local',
+  '../../../../.env',
+];
 for (const envPath of envPaths) {
   const fullPath = join(__dirname, envPath);
   try {

@@ -9,6 +9,8 @@ let currentWeekOffset = 0; // 0 = current week, 1 = next week, etc.
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
+  applyDisplayMode();
+
   // Check if availability display is enabled
   await checkAvailabilityFeatureFlag();
 
@@ -24,6 +26,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Set up week navigation
   setupWeekNavigation();
 });
+
+function applyDisplayMode() {
+  const isEmbedded = window.location.pathname === '/embed'
+    || new URLSearchParams(window.location.search).get('embed') === '1';
+
+  if (isEmbedded) {
+    document.body.classList.add('embedded-mode');
+    document.title = 'Book Your Free Strategy Call | Autonome';
+  }
+}
 
 // ============================================
 // FEATURE FLAG CHECK

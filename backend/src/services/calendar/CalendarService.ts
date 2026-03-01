@@ -12,6 +12,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { GoogleCalendarProvider, GoogleCalendarConfig } from './providers/GoogleCalendarProvider.js';
+import { ensureCalendarAccountsTable } from './calendarAccountsSchema.js';
 import {
   ICalendarProvider,
   TimeSlot,
@@ -81,6 +82,15 @@ export class CalendarService {
    * Initialize all active calendar providers from database
    */
   async initializeProviders(): Promise<void> {
+    const tableStatus = await ensureCalendarAccountsTable(this.supabase);
+
+    if (!tableStatus.ready) {
+      console.warn(
+        `Calendar accounts table unavailable, continuing without calendar providers: ${tableStatus.reason || 'unknown reason'}`
+      );
+      return;
+    }
+
     const { data: accounts, error } = await this.supabase
       .from('calendar_accounts')
       .select('*')

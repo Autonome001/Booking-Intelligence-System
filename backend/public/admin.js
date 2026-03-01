@@ -91,7 +91,7 @@ async function loadCalendars() {
   const connectBtn = document.getElementById('connect-btn');
 
   try {
-    const response = await fetch(`/api/calendar/accounts?user_email=${encodeURIComponent(USER_EMAIL)}`);
+    const response = await fetch(`/api/calendar/oauth/accounts?user_email=${encodeURIComponent(USER_EMAIL)}`);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -99,6 +99,10 @@ async function loadCalendars() {
 
     const data = await response.json();
     connectedCalendars = data.calendars || [];
+
+    if (data.warning) {
+      showNotification('info', data.details ? `${data.warning}: ${data.details}` : data.warning);
+    }
 
     // Update count display
     countDisplay.textContent = `${connectedCalendars.length} / ${MAX_CALENDARS} calendars connected`;
@@ -274,7 +278,7 @@ async function disconnectCalendar(calendarId, calendarEmail) {
   }
 
   try {
-    const response = await fetch(`/api/calendar/accounts/${calendarId}`, {
+    const response = await fetch(`/api/calendar/oauth/accounts/${calendarId}`, {
       method: 'DELETE'
     });
 

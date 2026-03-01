@@ -82,6 +82,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body.embedded-mode {
+  background: transparent;
+  min-height: auto;
+}
+
+body.embedded-mode .header,
+body.embedded-mode .footer {
+  display: none;
+}
+
+body.embedded-mode main {
+  padding: var(--gap-md) 0;
+}
+
+body.embedded-mode .container {
+  max-width: 720px;
+  padding: 0 var(--gap-sm);
+}
+
+body.embedded-mode .card {
+  margin-bottom: var(--gap-md);
+  box-shadow: var(--shadow-lg);
+}
+
 ::selection {
   background: var(--yellow);
   color: var(--black);

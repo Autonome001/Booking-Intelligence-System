@@ -8,6 +8,7 @@
 import { Router, type Request, type Response } from 'express';
 import { google } from 'googleapis';
 import { serviceManager } from '../services/serviceManager.js';
+import { ensureCalendarAccountsTable, isCalendarAccountsMissing } from '../services/calendar/calendarAccountsSchema.js';
 import { getServiceConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -102,6 +103,12 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
       throw new Error('Database service not available');
     }
 
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      throw new Error(tableStatus.reason || 'calendar_accounts table is unavailable');
+    }
+
     // Check if calendar already exists
     const { data: existingCalendar } = await supabase
       .from('calendar_accounts')
@@ -171,6 +178,20 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      res.json({
+        calendars: [],
+        total: 0,
+        max_allowed: 7,
+        user_email,
+        warning: 'Calendar storage is not fully configured yet',
+        details: tableStatus.reason,
+      });
+      return;
+    }
+
     const { data: calendars, error } = await supabase
       .from('calendar_accounts')
       .select('id, calendar_email, is_primary, priority, is_active, created_at, webhook_channel_id, webhook_resource_id, webhook_expires_at')
@@ -179,6 +200,16 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
       .order('priority', { ascending: false });
 
     if (error) {
+      if (isCalendarAccountsMissing(error)) {
+        res.json({
+          calendars: [],
+          total: 0,
+          max_allowed: 7,
+          user_email,
+          warning: 'calendar_accounts table was missing and could not be read',
+        });
+        return;
+      }
       throw error;
     }
 
@@ -209,6 +240,16 @@ router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void
 
     if (!supabase) {
       res.status(503).json({ error: 'Database service not available' });
+      return;
+    }
+
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      res.status(503).json({
+        error: 'Calendar storage is unavailable',
+        details: tableStatus.reason,
+      });
       return;
     }
 

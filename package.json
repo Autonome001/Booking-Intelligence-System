@@ -5,7 +5,7 @@
   "description": "RAG-powered booking agent for Autonome strategy calls",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node backend/server.js",
+    "start": "node dist/backend/server.js",
     "setup-db": "node scripts/setup-database.js",
     "populate-faqs": "node scripts/populate-faqs.js",
     "migrate": "tsx scripts/apply-enhanced-schema.ts",
@@ -18,7 +18,7 @@
     "test:slack:performance": "playwright test --project=performance-tests tests/slack-button-interaction.test.js",
     "test:slack:report": "playwright show-report playwright-report",
     "test:all": "npm run test && npm run test:slack",
-    "build": "echo 'Backend dependencies handled by Dockerfile'"
+    "build": "npx --prefix backend tsc -p tsconfig.json"
   },
   "dependencies": {
     "@slack/events-api": "^3.0.1",
