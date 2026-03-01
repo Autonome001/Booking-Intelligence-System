@@ -143,18 +143,18 @@ function createSlotCard(slot) {
   });
 
   card.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 1rem;">
-      <svg class="icon-lg" style="color: var(--royal-blue-600);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
+    <div style="display: flex; align-items: center; gap: 1.5rem;">
+      <div style="color: var(--electric-blue); background: var(--electric-blue-glow); padding: 1rem; border-radius: 12px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
       <div style="flex: 1;">
         <div class="slot-date">${dateStr}</div>
         <div class="slot-time">${timeStr} EST</div>
         <div class="slot-duration">${slot.duration_minutes} min consultation</div>
       </div>
-      <svg class="icon check-icon" style="opacity: 0; transition: opacity 0.2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-      </svg>
+      <div class="check-icon" style="opacity: 0; transition: var(--transition-smooth); color: var(--electric-blue);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
     </div>
   `;
 
