@@ -300,18 +300,6 @@ function createCalendarCard(calendar) {
     <div class="calendar-account-actions">
         <button
           type="button"
-          class="btn ${calendar.is_primary ? 'btn-secondary' : 'btn-primary'} btn-sm"
-          onclick="setPrimaryCalendar('${calendar.id}', '${calendar.calendar_email}')"
-          title="${calendar.is_primary ? 'This is the current booking destination' : 'Use this calendar for confirmed bookings'}"
-          ${calendar.is_primary ? 'disabled' : ''}
-      >
-        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l3 7h7l-5.5 4.2L16.5 21 12 16.8 7.5 21l2-7.8L4 9h7z"/>
-        </svg>
-        <span>${calendar.is_primary ? 'Booking Calendar' : 'Use for Booking'}</span>
-      </button>
-        <button
-          type="button"
           class="btn btn-secondary btn-sm"
           onclick="refreshCalendar('${calendar.id}')"
           title="Refresh webhook subscription"

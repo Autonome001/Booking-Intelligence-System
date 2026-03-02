@@ -902,6 +902,25 @@ body::before {
   line-height: 1.6;
 }
 
+.admin-page select.form-input,
+.admin-page .form-input[type="time"] {
+  background: rgba(15, 23, 42, 0.92);
+  color: var(--white);
+  border-color: rgba(59, 130, 246, 0.18);
+}
+
+.admin-page select.form-input:focus,
+.admin-page .form-input[type="time"]:focus {
+  background: rgba(15, 23, 42, 0.98);
+  color: var(--white);
+}
+
+.admin-page select.form-input option,
+.admin-page select.form-input optgroup {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 .admin-page .admin-toggle-switch {
   display: inline-flex;
   align-items: center;
