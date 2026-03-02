@@ -2,8 +2,8 @@
  * Calendar Service - Multi-Calendar Orchestration
  *
  * Manages up to 7 Google Calendar accounts with:
- * - Parallel availability fetching from all calendars
- * - Intersection logic (available only when ALL calendars free)
+ * - Customer-facing availability sourced from the admin-selected booking calendar
+ * - Optional fallback to multi-calendar intersection if no booking calendar is configured
  * - Caching with 15-minute TTL
  * - Provisional holds across all calendars simultaneously
  * - Transaction-style rollback on failures
@@ -206,8 +206,9 @@ export class CalendarService {
   }
 
   /**
-   * Get available time slots aggregated across ALL calendars
-   * Returns slots that are available in ALL calendars (intersection logic)
+   * Get available time slots for customer-facing booking.
+   * Uses the designated booking calendar as the source of truth.
+   * Falls back to intersecting all calendars only if no booking calendar is configured.
    */
   async getAvailableSlots(
     options: GetAvailableSlotsOptions
@@ -222,34 +223,51 @@ export class CalendarService {
 
     if (cached && cached.expiresAt > new Date()) {
       console.log(`Cache hit for availability (${this.providers.size} calendars)`);
-      return cached.slots.slice(0, options.maxSlots || 10);
+      if (typeof options.maxSlots === 'number' && options.maxSlots > 0) {
+        return cached.slots.slice(0, options.maxSlots);
+      }
+
+      return [...cached.slots];
     }
 
-    console.log(
-      `Fetching availability from ${this.providers.size} calendar(s) in parallel...`
-    );
+    const bookingProvider =
+      this.bookingProviderId ? this.providers.get(this.bookingProviderId) : undefined;
 
-    // Fetch availability from all calendars in parallel
-    const availabilityPromises = Array.from(this.providers.values()).map(
-      (provider) =>
-        provider.getAvailability({
-          startDate: options.startDate,
-          endDate: options.endDate,
-          durationMinutes: options.durationMinutes,
-          workingHours: options.workingHours,
-          bufferMinutes: options.bufferMinutes,
-          slotIntervalMinutes: options.slotIntervalMinutes,
-        })
-    );
+    let availabilitySourceDescription = `${this.providers.size} calendar(s) in parallel`;
+    let candidateSlots: TimeSlot[] = [];
 
-    const allAvailabilities = await Promise.all(availabilityPromises);
+    if (bookingProvider) {
+      availabilitySourceDescription = `booking calendar ${bookingProvider.calendarEmail}`;
+      candidateSlots = await bookingProvider.getAvailability({
+        startDate: options.startDate,
+        endDate: options.endDate,
+        durationMinutes: options.durationMinutes,
+        workingHours: options.workingHours,
+        bufferMinutes: options.bufferMinutes,
+        slotIntervalMinutes: options.slotIntervalMinutes,
+      });
+    } else {
+      const availabilityPromises = Array.from(this.providers.values()).map(
+        (provider) =>
+          provider.getAvailability({
+            startDate: options.startDate,
+            endDate: options.endDate,
+            durationMinutes: options.durationMinutes,
+            workingHours: options.workingHours,
+            bufferMinutes: options.bufferMinutes,
+            slotIntervalMinutes: options.slotIntervalMinutes,
+          })
+      );
 
-    // Intersection logic: Find slots available in ALL calendars
-    const intersectedSlots = this.intersectAvailabilities(allAvailabilities);
+      const allAvailabilities = await Promise.all(availabilityPromises);
+      candidateSlots = this.intersectAvailabilities(allAvailabilities);
+    }
+
+    console.log(`Fetching availability from ${availabilitySourceDescription}...`);
 
     // Apply availability controls: blackouts and working hours
     const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
-    const filteredByBlackouts = await this.filterByBlackouts(intersectedSlots, userEmail, options.startDate, options.endDate);
+    const filteredByBlackouts = await this.filterByBlackouts(candidateSlots, userEmail, options.startDate, options.endDate);
     const filteredByWorkingHours = await this.filterByWorkingHours(filteredByBlackouts, userEmail);
     const finalSlots = filteredByWorkingHours.filter((slot) => slot.start >= options.startDate);
 
@@ -260,7 +278,11 @@ export class CalendarService {
       `Found ${finalSlots.length} available slots (after blackouts and working hours filtering)`
     );
 
-    return finalSlots.slice(0, options.maxSlots || 10);
+    if (typeof options.maxSlots === 'number' && options.maxSlots > 0) {
+      return finalSlots.slice(0, options.maxSlots);
+    }
+
+    return finalSlots;
   }
 
   /**

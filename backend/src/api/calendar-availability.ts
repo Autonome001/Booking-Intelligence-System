@@ -1,7 +1,7 @@
 /**
  * Calendar Availability API
  *
- * Provides endpoints for fetching unified availability across all connected calendars,
+ * Provides endpoints for fetching customer-facing availability,
  * checking feature flags for calendar slot display, and powering the live booking chat.
  */
 
@@ -12,6 +12,7 @@ import { serviceManager } from '../services/serviceManager.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
 import { getSchedulingConfig, validateDuration, getBookingWindowHours } from '../utils/booking-rules.js';
+import { calculateAvailabilityResponseLimit } from '../utils/availability-response-limit.js';
 import type { CalendarService } from '../services/calendar/CalendarService.js';
 import {
   getAvailabilityDisplaySettings,
@@ -518,19 +519,27 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
 
     const requestedEndDate = new Date(startDate.getTime() + requestedDays * 24 * 60 * 60 * 1000);
     const endDate = requestedEndDate < displayWindowEnd ? requestedEndDate : displayWindowEnd;
+    const responseSlotLimit = calculateAvailabilityResponseLimit(
+      startDate,
+      endDate,
+      config.slotIntervalMinutes,
+      config.maxSlots
+    );
 
     const slots = await calendarService.getAvailableSlots({
       startDate,
       endDate,
       durationMinutes,
-      maxSlots: config.maxSlots,
+      maxSlots: responseSlotLimit,
       bufferMinutes: 0,
       slotIntervalMinutes: config.slotIntervalMinutes,
     });
 
     const providers = calendarService.getProviders();
+    const bookingCalendarInfo = calendarService.getBookingCalendarInfo();
+    const calendarsChecked = bookingCalendarInfo.isConfigured ? 1 : providers.length;
 
-    logger.info(`Availability fetched: ${slots.length} slots across ${providers.length} calendar(s)`);
+    logger.info(`Availability fetched: ${slots.length} slots across ${calendarsChecked} calendar(s)`);
 
     res.json({
       slots: slots.map((slot) => ({
@@ -538,12 +547,12 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
         end: slot.end.toISOString(),
         duration_minutes: durationMinutes,
       })),
-      calendars_checked: providers.length,
+      calendars_checked: calendarsChecked,
       rules: {
         duration_minutes: durationMinutes,
         display_window_days: displayWindowDays,
         lead_time_minutes: minimumNoticeMinutes,
-        max_slots: config.maxSlots,
+        max_slots: responseSlotLimit,
       },
       timestamp: new Date().toISOString(),
     });
@@ -618,12 +627,18 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
       const endDate = new Date(
         now.getTime() + chatSearchWindowDays * 24 * 60 * 60 * 1000
       );
+      const responseSlotLimit = calculateAvailabilityResponseLimit(
+        minStart,
+        endDate,
+        config.slotIntervalMinutes,
+        24
+      );
 
       const slots = await calendarService.getAvailableSlots({
         startDate: minStart,
         endDate,
         durationMinutes,
-        maxSlots: 24,
+        maxSlots: responseSlotLimit,
         bufferMinutes: 0,
         slotIntervalMinutes: config.slotIntervalMinutes,
       });

@@ -46,6 +46,8 @@
     "nodemon": "^3.0.1",
     "playwright": "^1.55.0",
     "supertest": "^6.3.3",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "tsx": "^4.21.0"
   },
   "engines": {
