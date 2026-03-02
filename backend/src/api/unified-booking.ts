@@ -423,49 +423,78 @@ async function processEmergencyMode(
       throw new Error('Supabase service not available');
     }
 
-    const { data: existingRecord, error: existingError } = await supabase
-      .from('booking_inquiries')
-      .select('processing_id')
-      .eq('processing_id', requestId)
-      .maybeSingle();
-
-    if (existingError) {
-      logger.warn(`Existing booking lookup failed for ${requestId}:`, existingError);
-    }
-
-    if (existingRecord?.processing_id) {
-      logger.info(`Emergency mode booking already exists, reusing record: ${requestId}`);
-
-      return {
-        success: true,
-        booking_id: requestId,
-        status: 'stored_for_manual_processing',
-        processing_mode: ProcessingMode.EMERGENCY as any,
-        message: 'Your booking request has been stored and will be processed manually.',
-      } as EmergencyResult;
-    }
-
-    const bookingRecord = {
-      form_submission_id: requestId,
-      customer_name: bookingData.name,
-      email_from: bookingData.email,
-      company_name: bookingData.company || null,
-      phone_number: bookingData.phone || null,
-      email_body: bookingData.message,
-      inquiry_type: bookingData.inquiry_type || 'strategy_call',
-      preferred_date: bookingData.preferred_date || null,
-      status: 'pending',
-      processing_id: requestId,
-      metadata: {
-        user_agent: bookingData.user_agent,
-        source: 'emergency_fallback',
-        processing_mode: 'emergency',
-      },
+    const metadata = {
+      user_agent: bookingData.user_agent,
+      source: 'emergency_fallback',
+      processing_mode: 'emergency',
     };
 
-    const { data: _data, error } = await supabase.from('booking_inquiries').insert([bookingRecord]);
+    const bookingRecordVariants: Array<Record<string, unknown>> = [
+      {
+        form_submission_id: requestId,
+        customer_name: bookingData.name,
+        email_from: bookingData.email,
+        company_name: bookingData.company || null,
+        phone_number: bookingData.phone || null,
+        email_body: bookingData.message,
+        inquiry_type: bookingData.inquiry_type || 'strategy_call',
+        preferred_date: bookingData.preferred_date || null,
+        status: 'pending',
+        processing_id: requestId,
+        metadata,
+      },
+      {
+        form_submission_id: requestId,
+        customer_name: bookingData.name,
+        email_from: bookingData.email,
+        company_name: bookingData.company || null,
+        phone_number: bookingData.phone || null,
+        email_body: bookingData.message,
+        inquiry_type: bookingData.inquiry_type || 'strategy_call',
+        preferred_date: bookingData.preferred_date || null,
+        status: 'pending',
+        metadata,
+      },
+      {
+        form_submission_id: requestId,
+        customer_name: bookingData.name,
+        email_from: bookingData.email,
+        company_name: bookingData.company || null,
+        phone_number: bookingData.phone || null,
+        email_body: bookingData.message,
+        status: 'pending',
+      },
+      {
+        form_submission_id: requestId,
+        customer_name: bookingData.name,
+        email_from: bookingData.email,
+        email_body: bookingData.message,
+      },
+      {
+        customer_name: bookingData.name,
+        email_from: bookingData.email,
+        email_body: bookingData.message,
+        status: 'pending',
+      },
+    ];
 
-    if (error) {
+    let lastInsertError: { code?: string; message: string } | null = null;
+
+    for (const [index, bookingRecord] of bookingRecordVariants.entries()) {
+      const { error } = await supabase.from('booking_inquiries').insert([bookingRecord]);
+
+      if (!error) {
+        logger.info(`Emergency mode booking stored successfully: ${requestId} (variant ${index + 1})`);
+
+        return {
+          success: true,
+          booking_id: requestId,
+          status: 'stored_for_manual_processing',
+          processing_mode: ProcessingMode.EMERGENCY as any,
+          message: 'Your booking request has been stored and will be processed manually.',
+        } as EmergencyResult;
+      }
+
       const isDuplicateBookingRecord =
         error.code === '23505' &&
         (error.message.includes('booking_inquiries_processing_id_key') ||
@@ -483,22 +512,28 @@ async function processEmergencyMode(
         } as EmergencyResult;
       }
 
-      logger.error(`Database insert failed for ${requestId}:`, {
+      lastInsertError = {
+        code: error.code,
+        message: error.message,
+      };
+
+      logger.warn(`Emergency mode insert variant ${index + 1} failed for ${requestId}:`, {
         errorCode: error.code,
         errorMessage: error.message,
       });
-      throw new Error(`Database insert failed: ${error.message} (Code: ${error.code})`);
     }
 
-    logger.info(`Emergency mode booking stored successfully: ${requestId}`);
+    if (lastInsertError) {
+      logger.error(`Database insert failed for ${requestId}:`, {
+        errorCode: lastInsertError.code,
+        errorMessage: lastInsertError.message,
+      });
 
-    return {
-      success: true,
-      booking_id: requestId,
-      status: 'stored_for_manual_processing',
-      processing_mode: ProcessingMode.EMERGENCY as any,
-      message: 'Your booking request has been stored and will be processed manually.',
-    } as EmergencyResult;
+      throw new Error(
+        `Database insert failed after compatibility retries: ${lastInsertError.message} (Code: ${lastInsertError.code})`
+      );
+    }
+    throw new Error('Database insert failed without a returned error payload');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error(`Emergency mode processing failed for ${requestId}: ${errorMessage}`);
