@@ -24,6 +24,11 @@ export interface MeetingNotificationSettings {
   updatedAt: string;
 }
 
+interface MeetingNotificationSettingsOptions {
+  requirePersistentStore?: boolean;
+  seedDefaults?: boolean;
+}
+
 type MeetingNotificationSettingsStore = Record<string, MeetingNotificationSettings>;
 
 interface PostgrestLikeError {
@@ -81,6 +86,10 @@ function readStore(): MeetingNotificationSettingsStore {
 function writeStore(store: MeetingNotificationSettingsStore): void {
   ensureSettingsDirectory();
   writeFileSync(getSettingsFilePath(), JSON.stringify(store, null, 2), 'utf8');
+}
+
+function createPersistenceError(message: string): Error {
+  return new Error(`Meeting notification settings persistence error: ${message}`);
 }
 
 function defaultPreMeetingReminders(): PreMeetingReminderConfig[] {
@@ -284,72 +293,11 @@ async function ensureMeetingNotificationSettingsTable(
   return { ready: true, repaired: true };
 }
 
-export async function getMeetingNotificationSettings(
-  supabase: SupabaseClient | null,
-  userEmail: string
-): Promise<MeetingNotificationSettings> {
-  const fallbackSettings = getFileBackedSettings(userEmail);
-
-  if (!supabase) {
-    return fallbackSettings;
-  }
-
-  const tableStatus = await ensureMeetingNotificationSettingsTable(supabase);
-  if (!tableStatus.ready) {
-    return fallbackSettings;
-  }
-
-  const { data, error } = await supabase
-    .from('meeting_notification_settings')
-    .select('timezone, pre_meeting, post_meeting, updated_at')
-    .eq('user_email', userEmail)
-    .maybeSingle<{
-      timezone: string | null;
-      pre_meeting: unknown;
-      post_meeting: unknown;
-      updated_at: string | null;
-    }>();
-
-  if (error || !data) {
-    return fallbackSettings;
-  }
-
-  return sanitizeSettings({
-    timezone: data.timezone || fallbackSettings.timezone,
-    preMeeting: Array.isArray(data.pre_meeting) ? (data.pre_meeting as PreMeetingReminderConfig[]) : fallbackSettings.preMeeting,
-    postMeeting:
-      data.post_meeting && typeof data.post_meeting === 'object'
-        ? (data.post_meeting as PostMeetingThankYouConfig)
-        : fallbackSettings.postMeeting,
-    updatedAt: data.updated_at || fallbackSettings.updatedAt,
-  });
-}
-
-export async function saveMeetingNotificationSettings(
-  supabase: SupabaseClient | null,
+async function persistDatabaseBackedSettings(
+  supabase: SupabaseClient,
   userEmail: string,
-  settings: Partial<MeetingNotificationSettings>
-): Promise<MeetingNotificationSettings> {
-  const fallbackSave = (): MeetingNotificationSettings => saveFileBackedSettings(userEmail, settings);
-
-  if (!supabase) {
-    return fallbackSave();
-  }
-
-  const tableStatus = await ensureMeetingNotificationSettingsTable(supabase);
-  if (!tableStatus.ready) {
-    return fallbackSave();
-  }
-
-  const existing = await getMeetingNotificationSettings(supabase, userEmail);
-  const nextSettings = sanitizeSettings({
-    ...existing,
-    ...settings,
-    preMeeting: settings.preMeeting || existing.preMeeting,
-    postMeeting: settings.postMeeting || existing.postMeeting,
-    updatedAt: new Date().toISOString(),
-  });
-
+  nextSettings: MeetingNotificationSettings
+): Promise<MeetingNotificationSettings | null> {
   const preMeetingPayload = nextSettings.preMeeting.map((reminder) => ({
     id: reminder.id,
     enabled: reminder.enabled,
@@ -386,7 +334,7 @@ export async function saveMeetingNotificationSettings(
     }>();
 
   if (error || !data) {
-    return fallbackSave();
+    return null;
   }
 
   return sanitizeSettings({
@@ -395,22 +343,152 @@ export async function saveMeetingNotificationSettings(
       ? (data.pre_meeting as Array<Record<string, unknown>>).map((reminder, index) => ({
           id: String(reminder['id'] || `reminder_${index + 1}`),
           enabled: Boolean(reminder['enabled']),
-          minutesBefore: normalizeMinutes(reminder['minutes_before'], nextSettings.preMeeting[index]?.minutesBefore || 5, 60 * 24 * 30),
-          subjectTemplate: String(reminder['subject_template'] || nextSettings.preMeeting[index]?.subjectTemplate || ''),
-          bodyTemplate: String(reminder['body_template'] || nextSettings.preMeeting[index]?.bodyTemplate || ''),
+          minutesBefore: normalizeMinutes(
+            reminder['minutes_before'],
+            nextSettings.preMeeting[index]?.minutesBefore || 5,
+            60 * 24 * 30
+          ),
+          subjectTemplate: String(
+            reminder['subject_template'] || nextSettings.preMeeting[index]?.subjectTemplate || ''
+          ),
+          bodyTemplate: String(
+            reminder['body_template'] || nextSettings.preMeeting[index]?.bodyTemplate || ''
+          ),
         }))
       : nextSettings.preMeeting,
     postMeeting:
       data.post_meeting && typeof data.post_meeting === 'object'
         ? {
             enabled: Boolean((data.post_meeting as Record<string, unknown>)['enabled']),
-            minutesAfter: normalizeMinutes((data.post_meeting as Record<string, unknown>)['minutes_after'], nextSettings.postMeeting.minutesAfter, 60 * 24 * 7),
-            subjectTemplate: String((data.post_meeting as Record<string, unknown>)['subject_template'] || nextSettings.postMeeting.subjectTemplate),
-            bodyTemplate: String((data.post_meeting as Record<string, unknown>)['body_template'] || nextSettings.postMeeting.bodyTemplate),
+            minutesAfter: normalizeMinutes(
+              (data.post_meeting as Record<string, unknown>)['minutes_after'],
+              nextSettings.postMeeting.minutesAfter,
+              60 * 24 * 7
+            ),
+            subjectTemplate: String(
+              (data.post_meeting as Record<string, unknown>)['subject_template']
+                || nextSettings.postMeeting.subjectTemplate
+            ),
+            bodyTemplate: String(
+              (data.post_meeting as Record<string, unknown>)['body_template']
+                || nextSettings.postMeeting.bodyTemplate
+            ),
           }
         : nextSettings.postMeeting,
     updatedAt: data.updated_at || nextSettings.updatedAt,
   });
+}
+
+export async function getMeetingNotificationSettings(
+  supabase: SupabaseClient | null,
+  userEmail: string,
+  options: MeetingNotificationSettingsOptions = {}
+): Promise<MeetingNotificationSettings> {
+  const fallbackSettings = getFileBackedSettings(userEmail);
+
+  if (!supabase) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('database service is not available');
+    }
+    return fallbackSettings;
+  }
+
+  const tableStatus = await ensureMeetingNotificationSettingsTable(supabase);
+  if (!tableStatus.ready) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(
+        tableStatus.reason || 'meeting_notification_settings table is unavailable'
+      );
+    }
+    return fallbackSettings;
+  }
+
+  const { data, error } = await supabase
+    .from('meeting_notification_settings')
+    .select('timezone, pre_meeting, post_meeting, updated_at')
+    .eq('user_email', userEmail)
+    .maybeSingle<{
+      timezone: string | null;
+      pre_meeting: unknown;
+      post_meeting: unknown;
+      updated_at: string | null;
+    }>();
+
+  if (error) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(error.message);
+    }
+    return fallbackSettings;
+  }
+
+  if (!data) {
+    if (options.seedDefaults || options.requirePersistentStore) {
+      const seeded = await persistDatabaseBackedSettings(supabase, userEmail, fallbackSettings);
+
+      if (seeded) {
+        return seeded;
+      }
+
+      if (options.requirePersistentStore) {
+        throw createPersistenceError('failed to initialize default settings row');
+      }
+    }
+
+    return fallbackSettings;
+  }
+
+  return sanitizeSettings({
+    timezone: data.timezone || fallbackSettings.timezone,
+    preMeeting: Array.isArray(data.pre_meeting) ? (data.pre_meeting as PreMeetingReminderConfig[]) : fallbackSettings.preMeeting,
+    postMeeting:
+      data.post_meeting && typeof data.post_meeting === 'object'
+        ? (data.post_meeting as PostMeetingThankYouConfig)
+        : fallbackSettings.postMeeting,
+    updatedAt: data.updated_at || fallbackSettings.updatedAt,
+  });
+}
+
+export async function saveMeetingNotificationSettings(
+  supabase: SupabaseClient | null,
+  userEmail: string,
+  settings: Partial<MeetingNotificationSettings>,
+  options: MeetingNotificationSettingsOptions = {}
+): Promise<MeetingNotificationSettings> {
+  const fallbackSave = (): MeetingNotificationSettings => saveFileBackedSettings(userEmail, settings);
+
+  if (!supabase) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('database service is not available');
+    }
+    return fallbackSave();
+  }
+
+  const tableStatus = await ensureMeetingNotificationSettingsTable(supabase);
+  if (!tableStatus.ready) {
+    throw createPersistenceError(
+      tableStatus.reason || 'meeting_notification_settings table is unavailable'
+    );
+  }
+
+  const existing = await getMeetingNotificationSettings(supabase, userEmail, {
+    requirePersistentStore: true,
+    seedDefaults: true,
+  });
+  const nextSettings = sanitizeSettings({
+    ...existing,
+    ...settings,
+    preMeeting: settings.preMeeting || existing.preMeeting,
+    postMeeting: settings.postMeeting || existing.postMeeting,
+    updatedAt: new Date().toISOString(),
+  });
+
+  const persisted = await persistDatabaseBackedSettings(supabase, userEmail, nextSettings);
+
+  if (!persisted) {
+    throw createPersistenceError('failed to write settings to the database');
+  }
+
+  return persisted;
 }
 
 export async function getAllMeetingNotificationSettings(

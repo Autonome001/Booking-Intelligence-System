@@ -700,7 +700,10 @@ router.get('/notification-settings', async (req: Request, res: Response): Promis
   try {
     const userEmail = resolveAdminUserEmail(req.query['user_email']);
     const supabase = await serviceManager.getService<SupabaseClient>('supabase');
-    const settings = await getMeetingNotificationSettings(supabase, userEmail);
+    const settings = await getMeetingNotificationSettings(supabase, userEmail, {
+      requirePersistentStore: true,
+      seedDefaults: true,
+    });
 
     res.json({
       success: true,
@@ -712,7 +715,7 @@ router.get('/notification-settings', async (req: Request, res: Response): Promis
     logger.error('Notification settings fetch error:', errorMessage);
     res.status(500).json({
       success: false,
-      error: 'Failed to load notification settings',
+      error: errorMessage,
     });
   }
 });
@@ -734,7 +737,9 @@ router.put('/notification-settings', async (req: Request, res: Response): Promis
       return;
     }
 
-    const settings = await saveMeetingNotificationSettings(supabase, userEmail, payload);
+    const settings = await saveMeetingNotificationSettings(supabase, userEmail, payload, {
+      requirePersistentStore: true,
+    });
 
     res.json({
       success: true,
@@ -746,7 +751,7 @@ router.put('/notification-settings', async (req: Request, res: Response): Promis
     logger.error('Notification settings save error:', errorMessage);
     res.status(500).json({
       success: false,
-      error: 'Failed to save notification settings',
+      error: errorMessage,
     });
   }
 });

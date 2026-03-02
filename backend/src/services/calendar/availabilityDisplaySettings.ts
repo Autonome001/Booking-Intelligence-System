@@ -8,6 +8,11 @@ export interface AvailabilityDisplaySettings {
   updatedAt: string;
 }
 
+interface AvailabilityDisplaySettingsOptions {
+  requirePersistentStore?: boolean;
+  seedDefaults?: boolean;
+}
+
 type AvailabilityDisplaySettingsStore = Record<string, AvailabilityDisplaySettings>;
 
 interface PostgrestLikeError {
@@ -74,6 +79,10 @@ function readStore(): AvailabilityDisplaySettingsStore {
 function writeStore(store: AvailabilityDisplaySettingsStore): void {
   ensureSettingsDirectory();
   writeFileSync(getSettingsFilePath(), JSON.stringify(store, null, 2), 'utf8');
+}
+
+function createPersistenceError(message: string): Error {
+  return new Error(`Booking display settings persistence error: ${message}`);
 }
 
 function getFileBackedSettings(
@@ -161,74 +170,11 @@ async function ensureBookingDisplaySettingsTable(
   return { ready: true, repaired: true };
 }
 
-export async function getAvailabilityDisplaySettings(
-  supabase: SupabaseClient | null,
+async function persistDatabaseBackedSettings(
+  supabase: SupabaseClient,
   userEmail: string,
-  defaultDisplayWindowDays: number
-): Promise<AvailabilityDisplaySettings> {
-  const fallbackSettings = getFileBackedSettings(userEmail, defaultDisplayWindowDays);
-
-  if (!supabase) {
-    return fallbackSettings;
-  }
-
-  const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
-  if (!tableStatus.ready) {
-    return fallbackSettings;
-  }
-
-  const { data, error } = await supabase
-    .from('booking_display_settings')
-    .select('display_window_days, ai_concierge_enabled, updated_at')
-    .eq('user_email', userEmail)
-    .maybeSingle<{
-      display_window_days: number;
-      ai_concierge_enabled: boolean;
-      updated_at: string | null;
-    }>();
-
-  if (error || !data) {
-    return fallbackSettings;
-  }
-
-  return {
-    displayWindowDays: clampDisplayWindowDays(
-      data.display_window_days,
-      fallbackSettings.displayWindowDays
-    ),
-    aiConciergeEnabled: data.ai_concierge_enabled ?? fallbackSettings.aiConciergeEnabled,
-    updatedAt: data.updated_at || fallbackSettings.updatedAt,
-  };
-}
-
-export async function saveAvailabilityDisplaySettings(
-  supabase: SupabaseClient | null,
-  userEmail: string,
-  settings: Partial<AvailabilityDisplaySettings>,
-  defaultDisplayWindowDays: number
-): Promise<AvailabilityDisplaySettings> {
-  const fallbackSave = (): AvailabilityDisplaySettings =>
-    saveFileBackedSettings(userEmail, settings, defaultDisplayWindowDays);
-
-  if (!supabase) {
-    return fallbackSave();
-  }
-
-  const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
-  if (!tableStatus.ready) {
-    return fallbackSave();
-  }
-
-  const existing = await getAvailabilityDisplaySettings(supabase, userEmail, defaultDisplayWindowDays);
-  const nextSettings: AvailabilityDisplaySettings = {
-    displayWindowDays: clampDisplayWindowDays(
-      settings.displayWindowDays ?? existing.displayWindowDays,
-      existing.displayWindowDays
-    ),
-    aiConciergeEnabled: settings.aiConciergeEnabled ?? existing.aiConciergeEnabled,
-    updatedAt: new Date().toISOString(),
-  };
-
+  nextSettings: AvailabilityDisplaySettings
+): Promise<AvailabilityDisplaySettings | null> {
   const { data, error } = await supabase
     .from('booking_display_settings')
     .upsert(
@@ -248,7 +194,7 @@ export async function saveAvailabilityDisplaySettings(
     }>();
 
   if (error || !data) {
-    return fallbackSave();
+    return null;
   }
 
   return {
@@ -259,6 +205,125 @@ export async function saveAvailabilityDisplaySettings(
     aiConciergeEnabled: data.ai_concierge_enabled ?? nextSettings.aiConciergeEnabled,
     updatedAt: data.updated_at || nextSettings.updatedAt,
   };
+}
+
+export async function getAvailabilityDisplaySettings(
+  supabase: SupabaseClient | null,
+  userEmail: string,
+  defaultDisplayWindowDays: number,
+  options: AvailabilityDisplaySettingsOptions = {}
+): Promise<AvailabilityDisplaySettings> {
+  const fallbackSettings = getFileBackedSettings(userEmail, defaultDisplayWindowDays);
+
+  if (!supabase) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('database service is not available');
+    }
+    return fallbackSettings;
+  }
+
+  const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
+  if (!tableStatus.ready) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(
+        tableStatus.reason || 'booking_display_settings table is unavailable'
+      );
+    }
+    return fallbackSettings;
+  }
+
+  const { data, error } = await supabase
+    .from('booking_display_settings')
+    .select('display_window_days, ai_concierge_enabled, updated_at')
+    .eq('user_email', userEmail)
+    .maybeSingle<{
+      display_window_days: number;
+      ai_concierge_enabled: boolean;
+      updated_at: string | null;
+    }>();
+
+  if (error) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(error.message);
+    }
+    return fallbackSettings;
+  }
+
+  if (!data) {
+    if (options.seedDefaults || options.requirePersistentStore) {
+      const seeded = await persistDatabaseBackedSettings(supabase, userEmail, fallbackSettings);
+
+      if (seeded) {
+        return seeded;
+      }
+
+      if (options.requirePersistentStore) {
+        throw createPersistenceError('failed to initialize default settings row');
+      }
+    }
+
+    return fallbackSettings;
+  }
+
+  return {
+    displayWindowDays: clampDisplayWindowDays(
+      data.display_window_days,
+      fallbackSettings.displayWindowDays
+    ),
+    aiConciergeEnabled: data.ai_concierge_enabled ?? fallbackSettings.aiConciergeEnabled,
+    updatedAt: data.updated_at || fallbackSettings.updatedAt,
+  };
+}
+
+export async function saveAvailabilityDisplaySettings(
+  supabase: SupabaseClient | null,
+  userEmail: string,
+  settings: Partial<AvailabilityDisplaySettings>,
+  defaultDisplayWindowDays: number,
+  options: AvailabilityDisplaySettingsOptions = {}
+): Promise<AvailabilityDisplaySettings> {
+  const fallbackSave = (): AvailabilityDisplaySettings =>
+    saveFileBackedSettings(userEmail, settings, defaultDisplayWindowDays);
+
+  if (!supabase) {
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('database service is not available');
+    }
+    return fallbackSave();
+  }
+
+  const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
+  if (!tableStatus.ready) {
+    throw createPersistenceError(
+      tableStatus.reason || 'booking_display_settings table is unavailable'
+    );
+  }
+
+  const existing = await getAvailabilityDisplaySettings(
+    supabase,
+    userEmail,
+    defaultDisplayWindowDays,
+    {
+      requirePersistentStore: true,
+      seedDefaults: true,
+    }
+  );
+  const nextSettings: AvailabilityDisplaySettings = {
+    displayWindowDays: clampDisplayWindowDays(
+      settings.displayWindowDays ?? existing.displayWindowDays,
+      existing.displayWindowDays
+    ),
+    aiConciergeEnabled: settings.aiConciergeEnabled ?? existing.aiConciergeEnabled,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const persisted = await persistDatabaseBackedSettings(supabase, userEmail, nextSettings);
+
+  if (!persisted) {
+    throw createPersistenceError('failed to write settings to the database');
+  }
+
+  return persisted;
 }
 
 export { MAX_DISPLAY_DAYS, MIN_DISPLAY_DAYS };

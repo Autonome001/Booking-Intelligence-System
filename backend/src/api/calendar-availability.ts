@@ -427,10 +427,19 @@ Reply as the booking concierge.`,
 
 async function getDisplaySettingsForUser(
   userEmail: string,
-  defaultDisplayWindowDays: number
+  defaultDisplayWindowDays: number,
+  requirePersistentStore = false
 ) {
   const supabase = await serviceManager.getService<SupabaseClient>('supabase');
-  const settings = await getAvailabilityDisplaySettings(supabase, userEmail, defaultDisplayWindowDays);
+  const settings = await getAvailabilityDisplaySettings(
+    supabase,
+    userEmail,
+    defaultDisplayWindowDays,
+    {
+      requirePersistentStore,
+      seedDefaults: requirePersistentStore,
+    }
+  );
 
   return { supabase, settings };
 }
@@ -806,19 +815,32 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
  * GET /api/calendar/preferences?user_email=dev@autonome.us
  */
 router.get('/preferences', async (req: Request, res: Response): Promise<void> => {
-  const config = getSchedulingConfig();
-  const userEmail = resolveUserEmail(req.query['user_email']);
-  const { settings } = await getDisplaySettingsForUser(userEmail, config.defaultBookingWindowDays);
+  try {
+    const config = getSchedulingConfig();
+    const userEmail = resolveUserEmail(req.query['user_email']);
+    const { settings } = await getDisplaySettingsForUser(
+      userEmail,
+      config.defaultBookingWindowDays,
+      true
+    );
 
-  res.json({
-    success: true,
-    user_email: userEmail,
-    settings,
-    limits: {
-      min_display_days: MIN_DISPLAY_DAYS,
-      max_display_days: MAX_DISPLAY_DAYS,
-    },
-  });
+    res.json({
+      success: true,
+      user_email: userEmail,
+      settings,
+      limits: {
+        min_display_days: MIN_DISPLAY_DAYS,
+        max_display_days: MAX_DISPLAY_DAYS,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Booking display settings fetch error:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: errorMessage,
+    });
+  }
 });
 
 /**
@@ -826,40 +848,52 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
  * PUT /api/calendar/preferences
  */
 router.put('/preferences', async (req: Request, res: Response): Promise<void> => {
-  const config = getSchedulingConfig();
-  const { user_email, display_window_days, ai_concierge_enabled } = req.body ?? {};
-  const userEmail = resolveUserEmail(user_email);
+  try {
+    const config = getSchedulingConfig();
+    const { user_email, display_window_days, ai_concierge_enabled } = req.body ?? {};
+    const userEmail = resolveUserEmail(user_email);
 
-  if (
-    display_window_days !== undefined &&
-    (!Number.isInteger(display_window_days) ||
-      display_window_days < MIN_DISPLAY_DAYS ||
-      display_window_days > MAX_DISPLAY_DAYS)
-  ) {
-    res.status(400).json({
-      success: false,
-      error: `display_window_days must be an integer between ${MIN_DISPLAY_DAYS} and ${MAX_DISPLAY_DAYS}`,
+    if (
+      display_window_days !== undefined &&
+      (!Number.isInteger(display_window_days) ||
+        display_window_days < MIN_DISPLAY_DAYS ||
+        display_window_days > MAX_DISPLAY_DAYS)
+    ) {
+      res.status(400).json({
+        success: false,
+        error: `display_window_days must be an integer between ${MIN_DISPLAY_DAYS} and ${MAX_DISPLAY_DAYS}`,
+      });
+      return;
+    }
+
+    const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+    const settings = await saveAvailabilityDisplaySettings(
+      supabase,
+      userEmail,
+      {
+        displayWindowDays: display_window_days,
+        aiConciergeEnabled:
+          typeof ai_concierge_enabled === 'boolean' ? ai_concierge_enabled : undefined,
+      },
+      config.defaultBookingWindowDays,
+      {
+        requirePersistentStore: true,
+      }
+    );
+
+    res.json({
+      success: true,
+      user_email: userEmail,
+      settings,
     });
-    return;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Booking display settings save error:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: errorMessage,
+    });
   }
-
-  const supabase = await serviceManager.getService<SupabaseClient>('supabase');
-  const settings = await saveAvailabilityDisplaySettings(
-    supabase,
-    userEmail,
-    {
-      displayWindowDays: display_window_days,
-      aiConciergeEnabled:
-        typeof ai_concierge_enabled === 'boolean' ? ai_concierge_enabled : undefined,
-    },
-    config.defaultBookingWindowDays
-  );
-
-  res.json({
-    success: true,
-    user_email: userEmail,
-    settings,
-  });
 });
 
 /**

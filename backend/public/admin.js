@@ -1,11 +1,27 @@
 // ============================================
 // STATE
 // ============================================
-const USER_EMAIL = 'dev@autonome.us'; // Hardcoded for now - could come from auth session
+const DEFAULT_ADMIN_USER_EMAIL = 'dev@autonome.us';
+const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
+const USER_EMAIL = resolveAdminUserEmail();
 let connectedCalendars = [];
 const MAX_CALENDARS = 7;
 const DEFAULT_WORKING_HOURS_TIMEZONE = 'America/New_York';
 const MAX_NOTIFICATION_REMINDERS = 5;
+
+function resolveAdminUserEmail() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryUserEmail = searchParams.get('user_email')?.trim();
+  const bodyUserEmail = document.body?.dataset?.userEmail?.trim();
+  const storedUserEmail = window.localStorage.getItem(ADMIN_USER_EMAIL_STORAGE_KEY)?.trim();
+  const resolvedUserEmail = queryUserEmail || bodyUserEmail || storedUserEmail || DEFAULT_ADMIN_USER_EMAIL;
+
+  if (resolvedUserEmail) {
+    window.localStorage.setItem(ADMIN_USER_EMAIL_STORAGE_KEY, resolvedUserEmail);
+  }
+
+  return resolvedUserEmail;
+}
 
 // ============================================
 // INITIALIZATION
@@ -500,7 +516,8 @@ async function loadDisplaySettings() {
     const response = await fetch(`/api/calendar/preferences?user_email=${encodeURIComponent(USER_EMAIL)}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
     }
 
     const data = await response.json();
@@ -670,7 +687,8 @@ async function loadNotificationSettings() {
     const response = await fetch(`/api/booking/notification-settings?user_email=${encodeURIComponent(USER_EMAIL)}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
     }
 
     const data = await response.json();
