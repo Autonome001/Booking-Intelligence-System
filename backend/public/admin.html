@@ -234,6 +234,83 @@
       </div>
     </div>
 
+    <!-- Meeting Notifications Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          Meeting Notifications
+        </h3>
+        <p class="card-subtitle">Configure up to 5 pre-meeting reminders and one post-meeting thank-you email.</p>
+      </div>
+
+      <form id="notification-settings-form" class="admin-notification-form">
+        <div class="admin-notification-header">
+          <div>
+            <label class="form-label" for="notification-timezone">Notification Timezone</label>
+            <select id="notification-timezone" class="form-input">
+              <option value="America/New_York">Eastern Time (America/New_York)</option>
+              <option value="America/Chicago">Central Time (America/Chicago)</option>
+              <option value="America/Denver">Mountain Time (America/Denver)</option>
+              <option value="America/Los_Angeles">Pacific Time (America/Los_Angeles)</option>
+              <option value="America/Phoenix">Arizona Time (America/Phoenix)</option>
+              <option value="America/Anchorage">Alaska Time (America/Anchorage)</option>
+              <option value="Pacific/Honolulu">Hawaii Time (Pacific/Honolulu)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          <div class="admin-inline-note">
+            Available placeholders: <code>{customer_name}</code>, <code>{company_name}</code>, <code>{meeting_date}</code>, <code>{meeting_time}</code>, <code>{meeting_datetime}</code>, <code>{booking_id}</code>, <code>{timezone}</code>
+          </div>
+        </div>
+
+        <div>
+          <h4 style="margin-bottom: 1rem;">Pre-Meeting Reminders</h4>
+          <div id="notification-reminders-grid">
+            <div class="text-center text-muted">
+              <div class="loading-spinner" style="margin: 2rem auto;"></div>
+              <p>Loading notification settings...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="notification-postmeeting-card">
+          <div class="notification-postmeeting-heading">
+            <h4>Post-Meeting Thank You</h4>
+            <label class="day-toggle">
+              <input type="checkbox" id="post-enabled">
+              <span class="text-small">Enabled</span>
+            </label>
+          </div>
+
+          <div class="notification-postmeeting-grid">
+            <div>
+              <label class="form-label" for="post-minutes-after">Send After (minutes)</label>
+              <input type="number" id="post-minutes-after" class="form-input" min="1" max="10080" value="5">
+            </div>
+            <div>
+              <label class="form-label" for="post-subject-template">Subject Template</label>
+              <input type="text" id="post-subject-template" class="form-input">
+            </div>
+          </div>
+
+          <div style="margin-top: 1rem;">
+            <label class="form-label" for="post-body-template">Body Template</label>
+            <textarea id="post-body-template" class="form-textarea" style="min-height: 140px;"></textarea>
+          </div>
+        </div>
+
+        <button type="submit" id="save-notification-settings-btn" class="btn btn-primary">
+          <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          Save Notification Settings
+        </button>
+      </form>
+    </div>
+
     <!-- Instructions Card -->
     <div class="card">
       <div class="card-header">

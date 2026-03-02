@@ -224,7 +224,7 @@ function createChatMessageElement(role, content) {
 
   const label = role === 'assistant' ? 'Booking AI' : 'You';
   item.innerHTML = `
-    <div class="chat-message-label">${label}</div>
+    <div class="chat-message-label ${role}">${label}</div>
     <div class="chat-bubble">${content.replace(/\n/g, '<br>')}</div>
   `;
 
@@ -245,7 +245,7 @@ function renderSuggestedChatSlots(suggestedSlots) {
 
   const container = getBookingChatContainer();
   const wrapper = document.createElement('div');
-  wrapper.className = 'chat-message assistant';
+  wrapper.className = 'chat-message assistant chat-suggestions-group';
 
   const chips = suggestedSlots.map((slot) => `
     <button type="button" class="assistant-suggestion-chip" data-slot='${JSON.stringify({
@@ -258,8 +258,10 @@ function renderSuggestedChatSlots(suggestedSlots) {
   `).join('');
 
   wrapper.innerHTML = `
-    <div class="chat-message-label">Suggested Times</div>
-    <div class="assistant-suggestion-list">${chips}</div>
+    <div class="chat-message-label assistant">Suggested Times</div>
+    <div class="chat-suggestions-panel">
+      <div class="assistant-suggestion-list">${chips}</div>
+    </div>
   `;
 
   container.appendChild(wrapper);

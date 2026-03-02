@@ -400,7 +400,7 @@ async function processRevisionFeedback(event: SlackEvent, feedback: string): Pro
             .select('processing_id, drafted_email')
             .eq('thread_ts', event.thread_ts)
             .eq('channel_id', realChannelId)
-            .eq('status', 'email_revision_requested')
+            .eq('status', 'revised')
             .order('updated_at', { ascending: false })
             .limit(1);
 
@@ -694,7 +694,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
       // Handle different actions
       switch (action_id) {
         case 'approve_email':
-          updateData.status = 'email_approved';
+          updateData.status = 'approved';
           responseText = '✅ Email approved! Customer will be contacted shortly.';
 
           shouldSendApprovedEmail = true;
@@ -702,7 +702,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
           break;
 
         case 'revise_email':
-          updateData.status = 'email_revision_requested';
+          updateData.status = 'revised';
           responseText = '📝 Please provide revision feedback in this thread.';
 
           // CRITICAL FIX: Store booking context for thread replies
@@ -714,7 +714,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
           break;
 
         case 'human_takeover':
-          updateData.status = 'human_takeover_requested';
+          updateData.status = 'human_takeover';
           responseText = '👤 Human takeover requested. Team member will handle this booking.';
           break;
 

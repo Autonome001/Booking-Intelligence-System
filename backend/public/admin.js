@@ -5,6 +5,7 @@ const USER_EMAIL = 'dev@autonome.us'; // Hardcoded for now - could come from aut
 let connectedCalendars = [];
 const MAX_CALENDARS = 7;
 const DEFAULT_WORKING_HOURS_TIMEZONE = 'America/New_York';
+const MAX_NOTIFICATION_REMINDERS = 5;
 
 // ============================================
 // INITIALIZATION
@@ -15,7 +16,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupConnectButton();
   setupAvailabilityTabs();
   setupDisplaySettingsForm();
+  setupNotificationSettingsForm();
   await loadDisplaySettings();
+  await loadNotificationSettings();
   switchTab('blackouts');
   checkOAuthCallback();
 });
@@ -370,6 +373,15 @@ function showNotification(type, message) {
   }, 5000);
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ============================================
 // BOOKING DISPLAY SETTINGS
 // ============================================
@@ -457,6 +469,173 @@ async function saveDisplaySettings(event) {
   } catch (error) {
     console.error('Failed to save display settings:', error);
     showNotification('error', error.message || 'Failed to save booking display settings');
+  } finally {
+    setButtonLoading(saveButton, false);
+  }
+}
+
+// ============================================
+// MEETING NOTIFICATION SETTINGS
+// ============================================
+function getDefaultNotificationSettings() {
+  return {
+    timezone: DEFAULT_WORKING_HOURS_TIMEZONE,
+    preMeeting: [
+      {
+        id: 'reminder_1',
+        enabled: true,
+        minutesBefore: 1440,
+        subjectTemplate: 'Reminder: Your Autonome consultation is tomorrow, {customer_name}',
+        bodyTemplate: 'Hi {customer_name},\n\nThis is a reminder that your Autonome consultation is scheduled for {meeting_datetime} ({timezone}).\n\nWe look forward to speaking with you.\n\nBest,\nThe Autonome Team',
+      },
+      {
+        id: 'reminder_2',
+        enabled: false,
+        minutesBefore: 60,
+        subjectTemplate: 'Reminder: Your Autonome consultation starts in 1 hour',
+        bodyTemplate: 'Hi {customer_name},\n\nYour Autonome consultation is coming up at {meeting_datetime} ({timezone}).\n\nReply to this email if anything changes.\n\nBest,\nThe Autonome Team',
+      },
+      {
+        id: 'reminder_3',
+        enabled: false,
+        minutesBefore: 15,
+        subjectTemplate: 'Reminder: Your Autonome consultation starts soon',
+        bodyTemplate: 'Hi {customer_name},\n\nThis is a quick reminder that your Autonome consultation begins at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team',
+      },
+      {
+        id: 'reminder_4',
+        enabled: false,
+        minutesBefore: 5,
+        subjectTemplate: 'Reminder: Your Autonome consultation begins in 5 minutes',
+        bodyTemplate: 'Hi {customer_name},\n\nYour Autonome consultation begins in about 5 minutes at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team',
+      },
+      {
+        id: 'reminder_5',
+        enabled: false,
+        minutesBefore: 2,
+        subjectTemplate: 'Reminder: Your Autonome consultation is about to begin',
+        bodyTemplate: 'Hi {customer_name},\n\nYour Autonome consultation is about to begin at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team',
+      },
+    ],
+    postMeeting: {
+      enabled: false,
+      minutesAfter: 5,
+      subjectTemplate: 'Thank you for meeting with Autonome, {customer_name}',
+      bodyTemplate: 'Hi {customer_name},\n\nThank you for taking the time to meet with Autonome. We appreciated the conversation about {company_name}.\n\nIf you have any follow-up questions, reply directly to this email and we will continue the conversation.\n\nBest,\nThe Autonome Team',
+    },
+  };
+}
+
+function renderNotificationSettings(settings) {
+  const container = document.getElementById('notification-reminders-grid');
+  const normalized = settings || getDefaultNotificationSettings();
+  const reminders = Array.from({ length: MAX_NOTIFICATION_REMINDERS }, (_, index) => {
+    return normalized.preMeeting[index] || getDefaultNotificationSettings().preMeeting[index];
+  });
+
+  container.innerHTML = reminders.map((reminder, index) => `
+    <div class="notification-config-card">
+      <div class="notification-config-header">
+        <h5>Reminder ${index + 1}</h5>
+        <label class="day-toggle">
+          <input type="checkbox" id="notification-enabled-${index}" ${reminder.enabled ? 'checked' : ''}>
+          <span class="text-small">Enabled</span>
+        </label>
+      </div>
+
+      <div class="notification-config-row">
+        <div>
+          <label class="form-label" for="notification-minutes-${index}">Minutes Before Meeting</label>
+          <input type="number" id="notification-minutes-${index}" class="form-input" min="1" max="43200" value="${reminder.minutesBefore}">
+        </div>
+        <div>
+          <label class="form-label" for="notification-subject-${index}">Subject Template</label>
+          <input type="text" id="notification-subject-${index}" class="form-input" value="${escapeHtml(reminder.subjectTemplate)}">
+        </div>
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <label class="form-label" for="notification-body-${index}">Body Template</label>
+        <textarea id="notification-body-${index}" class="form-textarea" style="min-height: 120px;">${escapeHtml(reminder.bodyTemplate)}</textarea>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('notification-timezone').value = normalized.timezone || DEFAULT_WORKING_HOURS_TIMEZONE;
+  document.getElementById('post-enabled').checked = normalized.postMeeting?.enabled === true;
+  document.getElementById('post-minutes-after').value = normalized.postMeeting?.minutesAfter || 5;
+  document.getElementById('post-subject-template').value = normalized.postMeeting?.subjectTemplate || '';
+  document.getElementById('post-body-template').value = normalized.postMeeting?.bodyTemplate || '';
+}
+
+async function loadNotificationSettings() {
+  try {
+    const response = await fetch(`/api/booking/notification-settings?user_email=${encodeURIComponent(USER_EMAIL)}`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    renderNotificationSettings(data.settings || getDefaultNotificationSettings());
+  } catch (error) {
+    console.error('Failed to load notification settings:', error);
+    renderNotificationSettings(getDefaultNotificationSettings());
+    showNotification('error', 'Failed to load notification settings');
+  }
+}
+
+function setupNotificationSettingsForm() {
+  const form = document.getElementById('notification-settings-form');
+  form?.addEventListener('submit', saveNotificationSettings);
+}
+
+async function saveNotificationSettings(event) {
+  event.preventDefault();
+
+  const saveButton = document.getElementById('save-notification-settings-btn');
+  const reminders = Array.from({ length: MAX_NOTIFICATION_REMINDERS }, (_, index) => ({
+    id: `reminder_${index + 1}`,
+    enabled: document.getElementById(`notification-enabled-${index}`).checked,
+    minutesBefore: parseInt(document.getElementById(`notification-minutes-${index}`).value, 10) || 5,
+    subjectTemplate: document.getElementById(`notification-subject-${index}`).value.trim(),
+    bodyTemplate: document.getElementById(`notification-body-${index}`).value.trim(),
+  }));
+
+  const settings = {
+    timezone: document.getElementById('notification-timezone').value || DEFAULT_WORKING_HOURS_TIMEZONE,
+    preMeeting: reminders,
+    postMeeting: {
+      enabled: document.getElementById('post-enabled').checked,
+      minutesAfter: parseInt(document.getElementById('post-minutes-after').value, 10) || 5,
+      subjectTemplate: document.getElementById('post-subject-template').value.trim(),
+      bodyTemplate: document.getElementById('post-body-template').value.trim(),
+    },
+  };
+
+  setButtonLoading(saveButton, true, 'Saving...');
+
+  try {
+    const response = await fetch('/api/booking/notification-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: USER_EMAIL,
+        settings,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to save notification settings');
+    }
+
+    renderNotificationSettings(result.settings || settings);
+    showNotification('success', 'Meeting notification settings saved');
+  } catch (error) {
+    console.error('Failed to save notification settings:', error);
+    showNotification('error', error.message || 'Failed to save notification settings');
   } finally {
     setButtonLoading(saveButton, false);
   }

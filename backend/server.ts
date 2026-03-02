@@ -347,3 +347,4 @@ startServer().catch((error: Error) => {
 
 // Initialize calendar cron jobs (cleanup holds, renew webhooks)
 import './src/services/calendar/calendar-cron.js';
+import './src/services/notifications/meeting-notification-cron.js';

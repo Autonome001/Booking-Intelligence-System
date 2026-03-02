@@ -8,9 +8,15 @@ import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
 import { determineProcessingMode, ProcessingMode } from '../services/mode-selector.js';
 import { processFullAIMode, generateScheduleSuggestions } from '../services/ai-processing.js';
+import {
+  getMeetingNotificationSettings,
+  saveMeetingNotificationSettings,
+  type MeetingNotificationSettings,
+} from '../services/notifications/meetingNotificationSettings.js';
 import type { BookingResponse } from '../../../src/types/index.js';
 
 const router: Router = express.Router();
+const DEFAULT_ADMIN_USER_EMAIL = 'dev@autonome.us';
 
 /**
  * Booking form request data
@@ -58,6 +64,10 @@ interface EmailConversationRecord {
   id: string;
   messages: unknown[];
   turns_count: number | null;
+}
+
+function resolveAdminUserEmail(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_ADMIN_USER_EMAIL;
 }
 
 function extractBookingIdFromText(...values: Array<string | undefined>): string | null {
@@ -313,7 +323,30 @@ async function processEmergencyMode(
       throw new Error('Supabase service not available');
     }
 
+    const { data: existingRecord, error: existingError } = await supabase
+      .from('booking_inquiries')
+      .select('processing_id')
+      .eq('processing_id', requestId)
+      .maybeSingle();
+
+    if (existingError) {
+      logger.warn(`Existing booking lookup failed for ${requestId}:`, existingError);
+    }
+
+    if (existingRecord?.processing_id) {
+      logger.info(`Emergency mode booking already exists, reusing record: ${requestId}`);
+
+      return {
+        success: true,
+        booking_id: requestId,
+        status: 'stored_for_manual_processing',
+        processing_mode: ProcessingMode.EMERGENCY as any,
+        message: 'Your booking request has been stored and will be processed manually.',
+      } as EmergencyResult;
+    }
+
     const bookingRecord = {
+      form_submission_id: requestId,
       customer_name: bookingData.name,
       email_from: bookingData.email,
       company_name: bookingData.company || null,
@@ -321,7 +354,7 @@ async function processEmergencyMode(
       email_body: bookingData.message,
       inquiry_type: bookingData.inquiry_type || 'strategy_call',
       preferred_date: bookingData.preferred_date || null,
-      status: 'new',
+      status: 'pending',
       processing_id: requestId,
       metadata: {
         user_agent: bookingData.user_agent,
@@ -333,6 +366,23 @@ async function processEmergencyMode(
     const { data: _data, error } = await supabase.from('booking_inquiries').insert([bookingRecord]);
 
     if (error) {
+      const isDuplicateBookingRecord =
+        error.code === '23505' &&
+        (error.message.includes('booking_inquiries_processing_id_key') ||
+          error.message.includes('booking_inquiries_form_submission_id_key'));
+
+      if (isDuplicateBookingRecord) {
+        logger.info(`Emergency mode booking already exists after duplicate insert attempt: ${requestId}`);
+
+        return {
+          success: true,
+          booking_id: requestId,
+          status: 'stored_for_manual_processing',
+          processing_mode: ProcessingMode.EMERGENCY as any,
+          message: 'Your booking request has been stored and will be processed manually.',
+        } as EmergencyResult;
+      }
+
       logger.error(`Database insert failed for ${requestId}:`, {
         errorCode: error.code,
         errorMessage: error.message,
@@ -506,6 +556,64 @@ router.get('/service-status', async (_req: Request, res: Response): Promise<void
     res.status(500).json({
       error: errorMessage,
       timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * Get configurable meeting notification settings for the admin UI.
+ */
+router.get('/notification-settings', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userEmail = resolveAdminUserEmail(req.query['user_email']);
+    const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+    const settings = await getMeetingNotificationSettings(supabase, userEmail);
+
+    res.json({
+      success: true,
+      user_email: userEmail,
+      settings,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Notification settings fetch error:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load notification settings',
+    });
+  }
+});
+
+/**
+ * Update configurable meeting notification settings for the admin UI.
+ */
+router.put('/notification-settings', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+    const userEmail = resolveAdminUserEmail(req.body?.user_email);
+    const payload = req.body?.settings as Partial<MeetingNotificationSettings> | undefined;
+
+    if (!payload || typeof payload !== 'object') {
+      res.status(400).json({
+        success: false,
+        error: 'settings payload is required',
+      });
+      return;
+    }
+
+    const settings = await saveMeetingNotificationSettings(supabase, userEmail, payload);
+
+    res.json({
+      success: true,
+      user_email: userEmail,
+      settings,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Notification settings save error:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save notification settings',
     });
   }
 });

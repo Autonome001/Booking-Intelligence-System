@@ -471,21 +471,28 @@ body::before {
   min-height: 240px;
   max-height: 360px;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 1.1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-glass);
   background: rgba(255, 255, 255, 0.02);
   display: grid;
-  gap: 0.9rem;
+  gap: 1.15rem;
 }
 
 .chat-message {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
+  align-content: start;
 }
 
 .chat-message.user {
   justify-items: end;
+  margin-bottom: 0.1rem;
+}
+
+.chat-message.assistant:not(:first-child) {
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .chat-message-label {
@@ -493,21 +500,34 @@ body::before {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  padding: 0 0.15rem;
+}
+
+.chat-message-label.user {
+  color: rgba(147, 197, 253, 0.92);
 }
 
 .chat-bubble {
   max-width: min(100%, 540px);
-  padding: 0.85rem 1rem;
-  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
   border: 1px solid var(--border-glass);
   background: rgba(255, 255, 255, 0.03);
   color: var(--white);
   line-height: 1.65;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .chat-message.user .chat-bubble {
-  background: rgba(59, 130, 246, 0.14);
-  border-color: rgba(59, 130, 246, 0.28);
+  max-width: min(92%, 480px);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.16));
+  border-color: rgba(96, 165, 250, 0.3);
+  border-top-right-radius: 8px;
+}
+
+.chat-message.assistant .chat-bubble {
+  max-width: min(94%, 560px);
+  border-top-left-radius: 8px;
 }
 
 .assistant-composer {
@@ -521,25 +541,36 @@ body::before {
 }
 
 .assistant-suggestion-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.65rem;
+}
+
+.chat-suggestions-panel {
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .assistant-suggestion-chip {
+  width: 100%;
+  text-align: left;
   border: 1px solid rgba(59, 130, 246, 0.22);
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(15, 23, 42, 0.55);
   color: var(--white);
-  border-radius: 999px;
-  padding: 0.45rem 0.8rem;
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
   cursor: pointer;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
   transition: var(--transition-smooth);
 }
 
 .assistant-suggestion-chip:hover {
   border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(30, 41, 59, 0.75);
   transform: translateY(-1px);
 }
 
@@ -1080,6 +1111,57 @@ body::before {
   gap: 0.25rem;
 }
 
+.admin-page .admin-notification-form {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-page .admin-notification-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 1rem;
+  align-items: end;
+}
+
+.admin-page .notification-config-card,
+.admin-page .notification-postmeeting-card {
+  padding: 1.25rem;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-page .notification-config-card + .notification-config-card {
+  margin-top: 1rem;
+}
+
+.admin-page .notification-config-header,
+.admin-page .notification-postmeeting-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-page .notification-config-header h5,
+.admin-page .notification-postmeeting-heading h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.admin-page .notification-config-row,
+.admin-page .notification-postmeeting-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 1rem;
+}
+
+.admin-page #notification-reminders-grid {
+  display: grid;
+  gap: 1rem;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .brand-name {
@@ -1137,7 +1219,18 @@ body::before {
 
   .assistant-grid,
   .admin-page .admin-settings-grid,
-  .admin-page .admin-settings-header {
+  .admin-page .admin-settings-header,
+  .admin-page .admin-notification-header,
+  .admin-page .notification-config-row,
+  .admin-page .notification-postmeeting-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-thread {
+    max-height: 420px;
+  }
+
+  .assistant-suggestion-list {
     grid-template-columns: 1fr;
   }
 

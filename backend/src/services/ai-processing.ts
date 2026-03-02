@@ -205,10 +205,6 @@ async function generateScheduleSuggestionsWithCalendar(analysis: AIAnalysis): Pr
         endDate,
         durationMinutes,
         maxSlots: 3,
-        workingHours: {
-          start: '09:00',
-          end: '17:00',
-        },
         bufferMinutes: 0,
         slotIntervalMinutes: config.slotIntervalMinutes,
       });
