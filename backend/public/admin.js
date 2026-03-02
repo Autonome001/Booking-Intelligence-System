@@ -4,6 +4,7 @@
 const USER_EMAIL = 'dev@autonome.us'; // Hardcoded for now - could come from auth session
 let connectedCalendars = [];
 const MAX_CALENDARS = 7;
+const DEFAULT_WORKING_HOURS_TIMEZONE = 'America/New_York';
 
 // ============================================
 // INITIALIZATION
@@ -701,6 +702,7 @@ const DAYS_OF_WEEK = [
 
 async function loadWorkingHours() {
   const container = document.getElementById('working-hours-grid');
+  const timezoneSelect = document.getElementById('working-hours-timezone');
 
   try {
     const response = await fetch(`/api/calendar/working-hours?user_email=${encodeURIComponent(USER_EMAIL)}`);
@@ -710,6 +712,11 @@ async function loadWorkingHours() {
     }
 
     const data = await response.json();
+    const effectiveTimezone = data.timezone || DEFAULT_WORKING_HOURS_TIMEZONE;
+
+    if (timezoneSelect) {
+      timezoneSelect.value = effectiveTimezone;
+    }
 
     // Create a map of existing working hours
     const hoursMap = new Map(data.working_hours.map(wh => [wh.day_of_week, wh]));
@@ -768,6 +775,8 @@ function toggleDayInputs(dayOfWeek) {
 
 async function saveWorkingHours(event) {
   event.preventDefault();
+  const timezoneSelect = document.getElementById('working-hours-timezone');
+  const timezone = timezoneSelect?.value || DEFAULT_WORKING_HOURS_TIMEZONE;
 
   const hours = DAYS_OF_WEEK.map(day => {
     const isActive = document.getElementById(`active-${day.value}`).checked;
@@ -789,7 +798,7 @@ async function saveWorkingHours(event) {
       body: JSON.stringify({
         user_email: USER_EMAIL,
         hours,
-        timezone: 'America/New_York', // Could make this configurable
+        timezone,
       }),
     });
 
@@ -799,6 +808,7 @@ async function saveWorkingHours(event) {
     }
 
     showNotification('success', 'Working hours saved successfully');
+    await loadWorkingHours();
 
   } catch (error) {
     console.error('Failed to save working hours:', error);

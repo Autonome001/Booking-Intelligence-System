@@ -211,6 +211,9 @@ router.get('/working-hours', async (req: Request, res: Response): Promise<void> 
     res.json({
       working_hours: data || [],
       total: data?.length || 0,
+      timezone:
+        (data || []).find((entry) => typeof entry.timezone === 'string' && entry.timezone)?.timezone ||
+        'America/New_York',
     });
   } catch (error) {
     logger.error('Working hours fetch error:', error);

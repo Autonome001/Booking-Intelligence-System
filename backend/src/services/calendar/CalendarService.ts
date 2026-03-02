@@ -74,6 +74,40 @@ export class CalendarService {
   private cacheTTLMinutes = 15; // Configurable via YAML in production
   private availabilityUserEmail: string | null = null;
 
+  private getLocalDateParts(date: Date, timeZone: string): {
+    dayOfWeek: number;
+    time: string;
+  } {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+
+    const weekday = parts.find((part) => part.type === 'weekday')?.value || 'Sun';
+    const hour = parts.find((part) => part.type === 'hour')?.value || '00';
+    const minute = parts.find((part) => part.type === 'minute')?.value || '00';
+    const second = parts.find((part) => part.type === 'second')?.value || '00';
+
+    const weekdayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    return {
+      dayOfWeek: weekdayMap[weekday] ?? 0,
+      time: `${hour}:${minute}:${second}`,
+    };
+  }
+
   constructor(
     private supabase: SupabaseClient,
     private googleConfig: GoogleCalendarConfig
@@ -687,36 +721,43 @@ export class CalendarService {
       console.log(`Filtering ${slots.length} slots by working hours`);
 
       // Create a map of day_of_week -> working hours
-      const workingHoursMap = new Map<number, { start: string; end: string }>();
+      const workingHoursMap = new Map<number, { start: string; end: string; timezone: string }>();
       workingHours.forEach((wh) => {
         workingHoursMap.set(wh.day_of_week, {
           start: wh.start_time,
           end: wh.end_time,
+          timezone: wh.timezone || 'America/New_York',
         });
       });
 
       // Filter slots that fall within working hours
       const filteredSlots = slots.filter((slot) => {
-        const dayOfWeek = slot.start.getDay(); // 0=Sunday, 1=Monday, etc.
+        // Try each configured working-hours row in its own timezone
+        for (const hoursForDay of workingHoursMap.values()) {
+          const localStart = this.getLocalDateParts(slot.start, hoursForDay.timezone);
+          const localEnd = this.getLocalDateParts(slot.end, hoursForDay.timezone);
 
-        // Check if there are working hours defined for this day
-        const hoursForDay = workingHoursMap.get(dayOfWeek);
+          // Find the matching row for the slot's local weekday in that timezone
+          if (!workingHoursMap.has(localStart.dayOfWeek)) {
+            continue;
+          }
 
-        if (!hoursForDay) {
-          // No working hours for this day = day off, exclude slot
-          return false;
+          const matchingHours = workingHoursMap.get(localStart.dayOfWeek);
+
+          if (!matchingHours) {
+            continue;
+          }
+
+          const isWithinWorkingHours =
+            localStart.time >= matchingHours.start && localEnd.time <= matchingHours.end;
+
+          if (isWithinWorkingHours) {
+            return true;
+          }
         }
 
-        // Extract time components from slot
-        const slotStartTime = slot.start.toTimeString().slice(0, 8); // "HH:MM:SS"
-        const slotEndTime = slot.end.toTimeString().slice(0, 8);
-
-        // Check if slot falls within working hours
-        // Slot is valid if: slot_start >= working_start AND slot_end <= working_end
-        const isWithinWorkingHours =
-          slotStartTime >= hoursForDay.start && slotEndTime <= hoursForDay.end;
-
-        return isWithinWorkingHours;
+        // No matching working-hours window in the configured timezone(s)
+        return false;
       });
 
       console.log(`${filteredSlots.length} slots remain after working hours filtering`);
