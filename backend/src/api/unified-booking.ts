@@ -317,6 +317,98 @@ function buildConfirmedMeetingDescription(
   return lines.join('\n');
 }
 
+function formatCustomerFacingDate(value?: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return `${parsed.toLocaleString('en-US', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+    timeZone: 'America/New_York',
+  })} EST`;
+}
+
+async function sendBookingCustomerEmail(
+  bookingData: BookingData,
+  bookingId: string,
+  calendarConfirmation:
+    | {
+      confirmed: boolean;
+      meeting_link?: string;
+      start?: string;
+    }
+    | null
+): Promise<void> {
+  const emailService = await serviceManager.getService<Resend>('email');
+
+  if (!emailService) {
+    logger.warn(`Confirmation email skipped for ${bookingId}: email service not available`);
+    return;
+  }
+
+  const emailConfig = getServiceConfig('email');
+  const customerName = bookingData.name.trim() || 'there';
+  const isCalendarConfirmed = Boolean(calendarConfirmation?.confirmed);
+  const formattedDate =
+    formatCustomerFacingDate(calendarConfirmation?.start)
+    || formatCustomerFacingDate(bookingData.preferred_date)
+    || 'the requested time';
+
+  const subject = isCalendarConfirmed
+    ? `Your Autonome consultation is confirmed [${bookingId}]`
+    : `We received your Autonome consultation request [${bookingId}]`;
+
+  const body = isCalendarConfirmed
+    ? [
+      `Hi ${customerName},`,
+      '',
+      'Your Autonome strategic consultation is confirmed.',
+      `Reference: ${bookingId}`,
+      `When: ${formattedDate}`,
+      calendarConfirmation?.meeting_link ? `Google Meet: ${calendarConfirmation.meeting_link}` : null,
+      '',
+      'A calendar invitation has been issued to this email address, and this confirmation is your direct reference from the Autonome team.',
+      '',
+      'If you need to adjust anything, simply reply to this email and we will help.',
+      '',
+      'The Autonome Team',
+    ].filter(Boolean).join('\n')
+    : [
+      `Hi ${customerName},`,
+      '',
+      'We received your consultation request and your information is now in our booking queue.',
+      `Reference: ${bookingId}`,
+      `Requested timing: ${formattedDate}`,
+      '',
+      'A strategist will follow up shortly with the next step and the best confirmed meeting time for you.',
+      '',
+      'The Autonome Team',
+    ].join('\n');
+
+  await emailService.emails.send({
+    from: emailConfig.fromAddress,
+    to: [bookingData.email],
+    subject,
+    text: body,
+    replyTo: emailConfig.fromAddress,
+  });
+}
+
+async function requiresConfirmedCalendarBooking(): Promise<boolean> {
+  if (process.env['SHOW_CALENDAR_SLOTS'] !== 'true') {
+    return false;
+  }
+
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  return Boolean(calendarService && calendarService.getProviders().length > 0);
+}
+
 async function confirmCalendarBooking(
   bookingData: BookingData,
   bookingId: string
@@ -594,6 +686,22 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const provisionalHoldId = typeof req.body?.['provisional_hold_id'] === 'string'
+      ? req.body['provisional_hold_id'].trim()
+      : '';
+    const calendarBookingRequired = await requiresConfirmedCalendarBooking();
+
+    if (calendarBookingRequired && !provisionalHoldId) {
+      res.status(400).json({
+        success: false,
+        error: 'Please select an available time before submitting your consultation request.',
+        request_id: requestId,
+        processing_time_ms: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
     // Determine processing mode
     const processingMode = await determineProcessingMode();
     logger.info(`Processing booking ${requestId} in ${processingMode} mode`);
@@ -645,8 +753,9 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
         end?: string;
       }
       | null = null;
+    let calendarConfirmationError: string | null = null;
 
-    if ((result as { success?: boolean }).success && typeof req.body?.['provisional_hold_id'] === 'string') {
+    if ((result as { success?: boolean }).success && provisionalHoldId) {
       try {
         calendarConfirmation = await confirmCalendarBooking(req.body as BookingData, requestId);
 
@@ -659,12 +768,37 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
           result.message = `Your consultation is confirmed. A calendar invite has been sent to ${req.body.email}.`;
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error(`Calendar confirmation failed for ${requestId}: ${errorMessage}`);
+        calendarConfirmationError = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`Calendar confirmation failed for ${requestId}: ${calendarConfirmationError}`);
         (result as Record<string, unknown>)['calendar_confirmed'] = false;
-        (result as Record<string, unknown>)['calendar_confirmation_error'] = errorMessage;
+        (result as Record<string, unknown>)['calendar_confirmation_error'] = calendarConfirmationError;
         result.message =
           'Your request was received, but we could not finalize the calendar invite automatically. Our team will follow up manually.';
+      }
+    }
+
+    if (calendarBookingRequired && !calendarConfirmation?.confirmed) {
+      res.status(409).json({
+        success: false,
+        error:
+          calendarConfirmationError
+          || 'We could not confirm your selected time slot. Please choose another available time and try again.',
+        request_id: requestId,
+        processing_time_ms: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if ((result as { success?: boolean }).success) {
+      try {
+        await sendBookingCustomerEmail(req.body as BookingData, requestId, calendarConfirmation);
+        (result as Record<string, unknown>)['confirmation_email_sent'] = true;
+      } catch (error) {
+        const emailError = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`Customer confirmation email failed for ${requestId}: ${emailError}`);
+        (result as Record<string, unknown>)['confirmation_email_sent'] = false;
+        (result as Record<string, unknown>)['confirmation_email_error'] = emailError;
       }
     }
 

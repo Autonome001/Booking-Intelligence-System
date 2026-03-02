@@ -551,6 +551,11 @@ function setupFormSubmission() {
       return;
     }
 
+    if (availabilitySlotsEnabled && !selectedHoldId) {
+      showErrorMessage('Please select an available time before submitting your consultation request.');
+      return;
+    }
+
     const isNameValid = validateField('name');
     const isEmailValid = validateField('email');
     const isMessageValid = validateField('message');
