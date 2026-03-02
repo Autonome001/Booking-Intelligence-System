@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,8 +75,12 @@ const envPaths = [
 for (const envPath of envPaths) {
   const fullPath = join(__dirname, envPath);
   try {
-    dotenv.config({ path: fullPath });
-    if (process.env['SUPABASE_URL']) {
+    if (!existsSync(fullPath)) {
+      continue;
+    }
+
+    const result = dotenv.config({ path: fullPath });
+    if (!result.error && result.parsed && Object.keys(result.parsed).length > 0) {
       logger.info(`Environment loaded from ${fullPath}`);
       break;
     }

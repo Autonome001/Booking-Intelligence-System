@@ -4,6 +4,7 @@ import type { WebClient } from '@slack/web-api';
 import type OpenAI from 'openai';
 import type { Resend } from 'resend';
 import { serviceManager } from '../services/serviceManager.js';
+import { sendTransactionalEmail } from '../services/email/sendTransactionalEmail.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
 import { determineProcessingMode, ProcessingMode } from '../services/mode-selector.js';
@@ -206,18 +207,17 @@ async function sendAutomatedBookingReply(
   draft: string
 ): Promise<void> {
   const emailService = await serviceManager.getService<Resend>('email');
-  const emailConfig = getServiceConfig('email');
 
   if (!emailService) {
     throw new Error('Email service not available');
   }
 
-  await emailService.emails.send({
-    from: emailConfig.fromAddress,
+  await sendTransactionalEmail({
+    emailService,
     to: [booking.email_from],
     subject: buildAutoReplyEmailSubject(booking),
     text: buildAutoReplyEmailBody(booking, draft),
-    replyTo: emailConfig.fromAddress,
+    context: `automated_booking_reply:${booking.processing_id}`,
   });
 }
 
@@ -352,7 +352,6 @@ async function sendBookingCustomerEmail(
     return { accepted: false, messageId: null };
   }
 
-  const emailConfig = getServiceConfig('email');
   const customerName = bookingData.name.trim() || 'there';
   const isCalendarConfirmed = Boolean(calendarConfirmation?.confirmed);
   const formattedDate =
@@ -391,23 +390,21 @@ async function sendBookingCustomerEmail(
       'The Autonome Team',
     ].join('\n');
 
-  const sendResult = await emailService.emails.send({
-    from: emailConfig.fromAddress,
+  const sendResult = await sendTransactionalEmail({
+    emailService,
     to: [bookingData.email],
     subject,
     text: body,
-    replyTo: emailConfig.fromAddress,
+    context: `booking_confirmation:${bookingId}`,
   });
 
-  const messageId =
-    ((sendResult as unknown as { data?: { id?: string }; id?: string })?.data?.id)
-    || ((sendResult as unknown as { data?: { id?: string }; id?: string })?.id)
-    || null;
+  const messageId = sendResult.messageId;
 
   logger.info(`Customer confirmation email accepted for ${bookingId}`, {
     messageId,
     recipient: bookingData.email,
     calendarConfirmed: isCalendarConfirmed,
+    fromAddress: sendResult.fromAddress,
   });
 
   return {

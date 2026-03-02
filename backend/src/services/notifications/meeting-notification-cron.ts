@@ -2,8 +2,8 @@ import cron from 'node-cron';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Resend } from 'resend';
 import { serviceManager } from '../serviceManager.js';
+import { sendTransactionalEmail } from '../email/sendTransactionalEmail.js';
 import { logger } from '../../utils/logger.js';
-import { getServiceConfig } from '../../utils/config.js';
 import {
   getAllMeetingNotificationSettings,
   type MeetingNotificationSettings,
@@ -125,14 +125,12 @@ async function sendNotificationEmail(
   meetingDate: Date,
   timeZone: string
 ): Promise<void> {
-  const emailConfig = getServiceConfig('email');
-
-  await emailService.emails.send({
-    from: emailConfig.fromAddress,
+  await sendTransactionalEmail({
+    emailService,
     to: [booking.email_from],
     subject: applyTemplate(subjectTemplate, booking, meetingDate, timeZone),
     text: applyTemplate(bodyTemplate, booking, meetingDate, timeZone),
-    replyTo: emailConfig.fromAddress,
+    context: `meeting_notification:${booking.processing_id || booking.id}`,
   });
 }
 

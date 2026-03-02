@@ -5,6 +5,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type OpenAI from 'openai';
 import type { Resend } from 'resend';
 import { serviceManager } from '../services/serviceManager.js';
+import {
+  getEmailErrorMessage,
+  sendTransactionalEmail,
+} from '../services/email/sendTransactionalEmail.js';
 import { getServiceConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
@@ -204,10 +208,11 @@ async function persistConversationTurn(
   }
 }
 
-async function sendApprovedBookingEmail(bookingId: string): Promise<void> {
+async function sendApprovedBookingEmail(
+  bookingId: string
+): Promise<{ fromAddress: string; messageId: string | null }> {
   const supabase = await serviceManager.getService<SupabaseClient>('supabase');
   const emailService = await serviceManager.getService<Resend>('email');
-  const emailConfig = getServiceConfig('email');
 
   if (!supabase) {
     throw new Error('Database service not available');
@@ -233,12 +238,17 @@ async function sendApprovedBookingEmail(bookingId: string): Promise<void> {
 
   const threadToken = booking.email_thread_id?.trim() || `booking-thread:${booking.processing_id}`;
 
-  await emailService.emails.send({
-    from: emailConfig.fromAddress,
+  const emailResult = await sendTransactionalEmail({
+    emailService,
     to: [booking.email_from],
     subject: buildBookingEmailSubject(booking),
     text: buildBookingEmailBody(booking),
-    replyTo: emailConfig.fromAddress,
+    context: `slack_approved_booking:${bookingId}`,
+  });
+
+  logger.info(`Approved email accepted by Resend for booking ${bookingId}`, {
+    messageId: emailResult.messageId,
+    recipient: booking.email_from,
   });
 
   await persistConversationTurn(supabase, booking, threadToken, booking.drafted_email);
@@ -255,6 +265,8 @@ async function sendApprovedBookingEmail(bookingId: string): Promise<void> {
   if (updateError) {
     logger.error(`Email sent but failed to update status for booking ${bookingId}:`, updateError);
   }
+
+  return emailResult;
 }
 
 /**
@@ -805,20 +817,21 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
 
       if (shouldSendApprovedEmail && bookingId) {
         try {
-          await sendApprovedBookingEmail(bookingId);
+          const emailResult = await sendApprovedBookingEmail(bookingId);
           await slack.chat.postMessage({
             channel: followUpChannelId,
-            text: `Email sent successfully from ${getServiceConfig('email').fromAddress} to the customer for booking ${bookingId}.`,
+            text: `Email sent successfully from ${emailResult.fromAddress} to the customer for booking ${bookingId}.${emailResult.messageId ? ` Resend message ID: ${emailResult.messageId}` : ''}`,
             thread_ts: payload.message?.ts || payload.message_ts,
           });
           logger.info(`Approved email sent for booking ${bookingId}`);
         } catch (emailError) {
           logger.error(`Failed to send approved email for booking ${bookingId}:`, emailError);
+          const errorMessage = getEmailErrorMessage(emailError);
 
           try {
             await slack.chat.postMessage({
               channel: followUpChannelId,
-              text: `Email send failed for booking ${bookingId}. Check RESEND_API_KEY and EMAIL_FROM_ADDRESS, then retry.`,
+              text: `Email send failed for booking ${bookingId}: ${errorMessage}`,
               thread_ts: payload.message?.ts || payload.message_ts,
             });
           } catch (slackError) {
