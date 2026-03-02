@@ -10,7 +10,6 @@ let bookingChatHistory = [];
 let isBookingChatLoading = false;
 let bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 let selectedHoldId = null;
-let bookingCalendarEmail = '';
 let isSlotSelectionPending = false;
 
 // ============================================
@@ -37,24 +36,6 @@ function applyDisplayMode() {
   }
 }
 
-function updateBookingCalendarNotice() {
-  const notice = document.getElementById('booking-calendar-notice');
-  const nameEl = document.getElementById('booking-calendar-name');
-
-  if (!notice || !nameEl) {
-    return;
-  }
-
-  if (!bookingCalendarEmail) {
-    notice.classList.add('hidden');
-    nameEl.textContent = '';
-    return;
-  }
-
-  nameEl.textContent = bookingCalendarEmail;
-  notice.classList.remove('hidden');
-}
-
 function setSubmitButtonPending(isPending) {
   const submitButton = document.getElementById('submit-btn');
   if (!submitButton) {
@@ -74,8 +55,6 @@ async function checkAvailabilityFeatureFlag() {
 
     maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
     aiConciergeEnabled = data.ai_concierge_enabled !== false;
-    bookingCalendarEmail = data.booking_calendar?.calendar_email || '';
-    updateBookingCalendarNotice();
 
     const conciergeSection = document.getElementById('ai-concierge-section');
     if (aiConciergeEnabled) {
@@ -229,12 +208,10 @@ async function selectSlot(slot) {
   try {
     const holdResult = await reserveSelectedSlot(slot);
     selectedHoldId = holdResult.hold_id;
-    bookingCalendarEmail = holdResult.calendar_email || bookingCalendarEmail;
     selectedSlot = {
       ...slot,
       hold_expires_at: holdResult.expires_at,
     };
-    updateBookingCalendarNotice();
     syncSelectedSlotUI();
   } catch (error) {
     selectedSlot = null;
@@ -326,7 +303,7 @@ function createChatMessageElement(role, content) {
   const item = document.createElement('div');
   item.className = `chat-message ${role}`;
 
-  const label = role === 'assistant' ? 'Booking AI' : 'You';
+  const label = role === 'assistant' ? 'Autonome Concierge' : 'You';
   item.innerHTML = `
     <div class="chat-message-label ${role}">${label}</div>
     <div class="chat-bubble">${content.replace(/\n/g, '<br>')}</div>
@@ -362,7 +339,7 @@ function renderSuggestedChatSlots(suggestedSlots) {
   `).join('');
 
   wrapper.innerHTML = `
-    <div class="chat-message-label assistant">Suggested Times</div>
+    <div class="chat-message-label assistant">Closest Matches</div>
     <div class="chat-suggestions-panel">
       <div class="assistant-suggestion-list">${chips}</div>
     </div>
@@ -375,7 +352,7 @@ function renderSuggestedChatSlots(suggestedSlots) {
     button.addEventListener('click', () => {
       const slot = JSON.parse(button.dataset.slot);
       selectSlot(slot);
-      appendChatMessage('assistant', `I attached ${button.textContent.trim()} to your request. You can keep chatting to refine it further, or submit the form when you are ready.`);
+      appendChatMessage('assistant', `I set ${button.textContent.trim()} as your current selection. If you want a tighter fit, tell me what to change and I will keep refining it with you.`);
     });
   });
 }
@@ -414,7 +391,7 @@ function setupBookingChat() {
 
   bookingChatHistory = [];
   container.innerHTML = '';
-  appendChatMessage('assistant', 'Tell me what timing would work better for you. I can search beyond the visible calendar and suggest the closest open times right here.');
+  appendChatMessage('assistant', 'I can help like a live scheduling concierge. Tell me your ideal day, time range, urgency, or any constraints, and I will narrow the best options intelligently.');
 
   sendButton.addEventListener('click', sendBookingChatMessage);
   input.addEventListener('keydown', (event) => {
@@ -452,7 +429,7 @@ async function sendBookingChatMessage() {
     const result = await response.json();
 
     if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Failed to reach the booking AI');
+      throw new Error(result.error || 'Failed to reach the concierge');
     }
 
     bookingChatHistory.push({ role: 'assistant', content: result.reply });
@@ -460,7 +437,7 @@ async function sendBookingChatMessage() {
     renderSuggestedChatSlots(result.suggested_slots || []);
   } catch (error) {
     console.error('Booking chat failed:', error);
-    const fallback = error.message || 'The booking AI is temporarily unavailable right now. You can try again, or submit your preferred timing in the form below.';
+    const fallback = error.message || 'The concierge is temporarily unavailable right now. You can try again, or submit your preferred timing in the form below.';
     bookingChatHistory.push({ role: 'assistant', content: fallback });
     appendChatMessage('assistant', fallback);
   } finally {
@@ -559,7 +536,7 @@ function buildBookingChatTranscript() {
   }
 
   return turns
-    .map((message) => `${message.role === 'assistant' ? 'Booking AI' : 'Customer'}: ${message.content}`)
+    .map((message) => `${message.role === 'assistant' ? 'Autonome Concierge' : 'Customer'}: ${message.content}`)
     .join('\n');
 }
 
@@ -673,7 +650,7 @@ function showSuccess(result) {
 
   if (result.calendar_confirmed) {
     successTitle.textContent = 'Consultation Booked';
-    successBody.textContent = `Your consultation is confirmed on ${result.calendar_email}. A calendar invite has been sent to your email address.`;
+    successBody.textContent = 'Your consultation is confirmed. A calendar invite has been sent to your email address.';
 
     const detailParts = [];
     if (result.confirmed_start) {
@@ -694,9 +671,7 @@ function showSuccess(result) {
   } else {
     successTitle.textContent = 'Consultation Request Received';
     successBody.textContent = result.message || 'Your request has been processed. A strategist will contact you shortly via our official channels.';
-    successDetails.textContent = bookingCalendarEmail
-      ? `Booking destination: ${bookingCalendarEmail}`
-      : '';
+    successDetails.textContent = '';
     successDetails.classList.toggle('hidden', !successDetails.textContent);
   }
 

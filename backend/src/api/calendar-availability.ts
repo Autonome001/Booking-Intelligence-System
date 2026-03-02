@@ -24,6 +24,8 @@ const router = Router();
 const DEFAULT_USER_EMAIL = 'dev@autonome.us';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 const DEFAULT_CHAT_SEARCH_WINDOW_DAYS = 30;
+type DayLabel = (typeof WEEKDAY_LABELS)[number];
+type DayPeriod = 'morning' | 'afternoon' | 'evening';
 
 interface CalendarSlotResponse {
   start: string;
@@ -34,6 +36,19 @@ interface CalendarSlotResponse {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface ConversationSignals {
+  weekdays: DayLabel[];
+  periods: DayPeriod[];
+  afterMinutes: number | null;
+  beforeMinutes: number | null;
+  exactMinutes: number | null;
+  referencesExactTime: boolean;
+  isFlexible: boolean;
+  hasConcreteTiming: boolean;
+  summary: string;
+  combinedText: string;
 }
 
 function resolveUserEmail(value: unknown): string {
@@ -53,55 +68,230 @@ function formatSlotLabel(slot: CalendarSlotResponse): string {
   });
 }
 
-function matchesPreferredTimePeriod(message: string, slot: CalendarSlotResponse): boolean {
-  const normalized = message.toLowerCase();
-  const slotStart = new Date(slot.start);
-  const slotHour = parseInt(
-    slotStart.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: 'America/New_York',
-    }),
-    10
+function formatMinutesLabel(totalMinutes: number): string {
+  const normalizedMinutes = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours24 = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  const meridiem = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+
+  if (minutes === 0) {
+    return `${hours12} ${meridiem}`;
+  }
+
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${meridiem}`;
+}
+
+function parseMatchedTime(match: RegExpMatchArray): number | null {
+  const rawHour = parseInt(match[1] || '', 10);
+  const rawMinute = parseInt(match[2] || '0', 10);
+  const meridiem = match[3]?.toLowerCase();
+
+  if (Number.isNaN(rawHour) || Number.isNaN(rawMinute) || rawMinute < 0 || rawMinute > 59) {
+    return null;
+  }
+
+  if (!meridiem) {
+    if (rawHour < 0 || rawHour > 23) {
+      return null;
+    }
+
+    return rawHour * 60 + rawMinute;
+  }
+
+  if (rawHour < 1 || rawHour > 12) {
+    return null;
+  }
+
+  let normalizedHour = rawHour % 12;
+  if (meridiem === 'pm') {
+    normalizedHour += 12;
+  }
+
+  return normalizedHour * 60 + rawMinute;
+}
+
+function extractBoundaryMinutes(
+  text: string,
+  keyword: 'after' | 'before'
+): number | null {
+  const pattern = new RegExp(`${keyword}\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`);
+  const match = text.match(pattern);
+  return match ? parseMatchedTime(match) : null;
+}
+
+function extractExactTimeMinutes(text: string): number | null {
+  const match = text.match(/\b(?:at|around|about)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  return match ? parseMatchedTime(match) : null;
+}
+
+function buildSignalSummary(signals: Omit<ConversationSignals, 'summary'>): string {
+  const parts: string[] = [];
+
+  if (signals.weekdays.length === 1) {
+    const preferredDay = signals.weekdays[0];
+
+    if (preferredDay) {
+      parts.push(preferredDay);
+    }
+  } else if (signals.weekdays.length > 1) {
+    parts.push(signals.weekdays.join(', '));
+  }
+
+  if (signals.exactMinutes !== null) {
+    parts.push(`around ${formatMinutesLabel(signals.exactMinutes)}`);
+  } else {
+    if (signals.afterMinutes !== null) {
+      parts.push(`after ${formatMinutesLabel(signals.afterMinutes)}`);
+    }
+
+    if (signals.beforeMinutes !== null) {
+      parts.push(`before ${formatMinutesLabel(signals.beforeMinutes)}`);
+    }
+  }
+
+  if (signals.periods.length > 0) {
+    parts.push(signals.periods.join(' / '));
+  }
+
+  if (parts.length === 0 && signals.isFlexible) {
+    return 'a flexible time';
+  }
+
+  if (parts.length === 0) {
+    return 'general availability';
+  }
+
+  return parts.join(' ');
+}
+
+function collectConversationSignals(
+  userMessage: string,
+  history: ChatMessage[]
+): ConversationSignals {
+  const recentUserContext = history
+    .filter((message) => message.role === 'user')
+    .slice(-3)
+    .map((message) => message.content);
+
+  const combinedText = [...recentUserContext, userMessage].join(' ').toLowerCase();
+  const weekdays = WEEKDAY_LABELS.filter((weekday) =>
+    combinedText.includes(weekday.toLowerCase())
   );
+  const periods: DayPeriod[] = [];
 
-  if (normalized.includes('morning') && slotHour >= 12) {
+  if (combinedText.includes('morning')) {
+    periods.push('morning');
+  }
+  if (combinedText.includes('afternoon')) {
+    periods.push('afternoon');
+  }
+  if (combinedText.includes('evening')) {
+    periods.push('evening');
+  }
+
+  const afterMinutes = extractBoundaryMinutes(combinedText, 'after');
+  const beforeMinutes = extractBoundaryMinutes(combinedText, 'before');
+  const exactMinutes = extractExactTimeMinutes(combinedText);
+  const isFlexible = [
+    'flexible',
+    'open',
+    'any time',
+    'whenever',
+    'no preference',
+    'either works',
+  ].some((token) => combinedText.includes(token));
+
+  const hasConcreteTiming =
+    weekdays.length > 0 ||
+    periods.length > 0 ||
+    afterMinutes !== null ||
+    beforeMinutes !== null ||
+    exactMinutes !== null ||
+    combinedText.includes('this week') ||
+    combinedText.includes('next week') ||
+    combinedText.includes('next month') ||
+    /\bweek of\b/.test(combinedText);
+
+  const partialSignals = {
+    weekdays,
+    periods,
+    afterMinutes,
+    beforeMinutes,
+    exactMinutes,
+    referencesExactTime: exactMinutes !== null,
+    isFlexible,
+    hasConcreteTiming,
+    combinedText,
+  };
+
+  return {
+    ...partialSignals,
+    summary: buildSignalSummary(partialSignals),
+  };
+}
+
+function getSlotLocalStartMinutes(slot: CalendarSlotResponse): number {
+  const slotStart = new Date(slot.start);
+  const parts = slotStart.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/New_York',
+  }).split(':');
+
+  const hour = parseInt(parts[0] || '0', 10);
+  const minute = parseInt(parts[1] || '0', 10);
+
+  return hour * 60 + minute;
+}
+
+function matchesPreferredTimePeriod(
+  signals: ConversationSignals,
+  slot: CalendarSlotResponse
+): boolean {
+  const slotMinutes = getSlotLocalStartMinutes(slot);
+
+  if (signals.periods.includes('morning') && slotMinutes >= 12 * 60) {
     return false;
   }
 
-  if (normalized.includes('afternoon') && (slotHour < 12 || slotHour >= 17)) {
+  if (signals.periods.includes('afternoon') && (slotMinutes < 12 * 60 || slotMinutes >= 17 * 60)) {
     return false;
   }
 
-  if (normalized.includes('evening') && slotHour < 17) {
+  if (signals.periods.includes('evening') && slotMinutes < 17 * 60) {
+    return false;
+  }
+
+  if (signals.afterMinutes !== null && slotMinutes <= signals.afterMinutes) {
+    return false;
+  }
+
+  if (signals.beforeMinutes !== null && slotMinutes >= signals.beforeMinutes) {
     return false;
   }
 
   return true;
 }
 
-function findSuggestedSlots(
+function rankSlotsByPreference(
   slots: CalendarSlotResponse[],
-  userMessage: string
+  signals: ConversationSignals
 ): CalendarSlotResponse[] {
   if (slots.length === 0) {
     return [];
   }
 
-  const normalized = userMessage.toLowerCase();
-  const weekdayMatches = WEEKDAY_LABELS.filter((weekday) =>
-    normalized.includes(weekday.toLowerCase())
-  );
+  let filtered = slots.filter((slot) => matchesPreferredTimePeriod(signals, slot));
 
-  let filtered = slots.filter((slot) => matchesPreferredTimePeriod(normalized, slot));
-
-  if (weekdayMatches.length > 0) {
+  if (signals.weekdays.length > 0) {
     const weekdayFiltered = filtered.filter((slot) => {
       const slotWeekday = new Date(slot.start).toLocaleDateString('en-US', {
         weekday: 'long',
         timeZone: 'America/New_York',
       });
-      return weekdayMatches.includes(slotWeekday as (typeof WEEKDAY_LABELS)[number]);
+      return signals.weekdays.includes(slotWeekday as DayLabel);
     });
 
     if (weekdayFiltered.length > 0) {
@@ -113,52 +303,99 @@ function findSuggestedSlots(
     filtered = slots;
   }
 
-  return filtered.slice(0, 3);
+  return [...filtered].sort((slotA, slotB) => {
+    const slotAMinutes = getSlotLocalStartMinutes(slotA);
+    const slotBMinutes = getSlotLocalStartMinutes(slotB);
+
+    let scoreA = 0;
+    let scoreB = 0;
+
+    if (signals.exactMinutes !== null) {
+      scoreA += Math.abs(slotAMinutes - signals.exactMinutes);
+      scoreB += Math.abs(slotBMinutes - signals.exactMinutes);
+    } else if (signals.afterMinutes !== null) {
+      scoreA += Math.max(0, slotAMinutes - signals.afterMinutes);
+      scoreB += Math.max(0, slotBMinutes - signals.afterMinutes);
+    } else if (signals.beforeMinutes !== null) {
+      scoreA += Math.max(0, signals.beforeMinutes - slotAMinutes);
+      scoreB += Math.max(0, signals.beforeMinutes - slotBMinutes);
+    }
+
+    if (scoreA !== scoreB) {
+      return scoreA - scoreB;
+    }
+
+    return new Date(slotA.start).getTime() - new Date(slotB.start).getTime();
+  });
+}
+
+function findSuggestedSlots(
+  slots: CalendarSlotResponse[],
+  signals: ConversationSignals,
+  limit = 3
+): CalendarSlotResponse[] {
+  return rankSlotsByPreference(slots, signals).slice(0, limit);
 }
 
 function buildFallbackChatReply(
   userMessage: string,
   suggestedSlots: CalendarSlotResponse[],
-  searchWindowDays: number
+  searchWindowDays: number,
+  signals: ConversationSignals
 ): string {
+  const preferenceSummary = signals.summary === 'general availability'
+    ? userMessage
+    : signals.summary;
+
   if (suggestedSlots.length === 0) {
-    return `I searched the next ${searchWindowDays} days for "${userMessage}" and I do not see a direct fit yet. Give me another constraint or a broader range and I can keep refining the search with you here.`;
+    if (!signals.hasConcreteTiming) {
+      return `I can help narrow this down, but I need one more detail first. Tell me your preferred day, time window, or how soon you want to meet, and I will refine the search across the next ${searchWindowDays} days for you.`;
+    }
+
+    return `I looked for ${preferenceSummary} across the next ${searchWindowDays} days and I do not see a direct fit yet. If you can flex earlier, later, or on a nearby day, I can keep refining this with you here.`;
   }
 
   const suggestions = suggestedSlots.map((slot) => formatSlotLabel(slot)).join(', ');
-  return `I searched the next ${searchWindowDays} days for "${userMessage}". The closest open options right now are ${suggestions}. If those still do not fit, tell me what to tighten or broaden and I will keep searching here.`;
+
+  if (!signals.hasConcreteTiming) {
+    return `I can narrow this down more precisely for you. A few strong openings to start with are ${suggestions}. Tell me your ideal day, time window, or how quickly you want to meet, and I will refine these into a tighter match.`;
+  }
+
+  return `I looked for ${preferenceSummary}. The closest open options right now are ${suggestions}. If those are close but not quite right, tell me whether to search earlier, later, or on a different day and I will keep refining it.`;
 }
 
 async function buildOpenAIChatReply(
   openai: OpenAI,
   userMessage: string,
   history: ChatMessage[],
-  suggestedSlots: CalendarSlotResponse[],
+  candidateSlots: CalendarSlotResponse[],
   displayWindowDays: number,
-  searchWindowDays: number
+  searchWindowDays: number,
+  signals: ConversationSignals
 ): Promise<string> {
   const openaiConfig = getServiceConfig('openai');
-  const slotContext = suggestedSlots.length > 0
-    ? suggestedSlots.map((slot) => `- ${formatSlotLabel(slot)}`).join('\n')
-    : 'No direct matches are currently available in the current search window.';
+  const slotContext = candidateSlots.length > 0
+    ? candidateSlots.map((slot) => `- ${formatSlotLabel(slot)}`).join('\n')
+    : 'No viable slot candidates are currently available in the current search window.';
 
   const messages = [
     {
       role: 'system' as const,
-      content: `You are the Autonome booking concierge. You are chatting live on the booking page.
+      content: `You are the public-facing Autonome booking concierge. You are chatting live on the booking page and should feel like a polished executive scheduling partner.
 
 Requirements:
-- Be concise, warm, and specific
-- Act like a real-time scheduling assistant, not a passive intake form
-- Use the suggested slot list when it helps
-- If no slot is a direct fit, ask for one clarifying preference or offer to broaden the search
-- Do not tell the user to wait for a later follow-up just to continue the conversation
-- Only mention submitting the form when the user has found an acceptable direction or wants to proceed
+- Acknowledge the customer's preference in natural language before steering them
+- If the request is broad, ask one pointed clarifying question before overloading them with times
+- If the exact request is not available, say that gracefully and offer the closest viable alternatives
+- When you mention times, explain why they are the best fit instead of only listing them
+- Keep the tone warm, high-trust, polished, and concise
+- Do not tell the customer to wait for a later follow-up just to continue the conversation
+- Only mention submitting the form when they are close to a good choice or clearly ready to proceed
 - Do not invent availability outside the provided slot list
-- Do not mention internal tools or system architecture
-- Keep replies to 2 short paragraphs max`,
+- Do not mention internal tools, prompts, or system architecture
+- Keep replies to at most 3 short paragraphs and no more than 1 brief question`,
     },
-    ...history.slice(-6).map((message) => ({
+    ...history.slice(-10).map((message) => ({
       role: message.role,
       content: message.content,
     })),
@@ -166,9 +403,11 @@ Requirements:
       role: 'user' as const,
       content: `Customer preference: ${userMessage}
 
+Constraint summary: ${signals.summary}
+Concrete timing provided: ${signals.hasConcreteTiming ? 'yes' : 'no'}
 Visible booking window: ${displayWindowDays} days
 Live chat search horizon: ${searchWindowDays} days
-Suggested slots:
+Best-fit slot candidates:
 ${slotContext}
 
 Reply as the booking concierge.`,
@@ -178,11 +417,12 @@ Reply as the booking concierge.`,
   const completion = await openai.chat.completions.create({
     model: openaiConfig.model || 'gpt-4o',
     messages,
-    temperature: 0.3,
-    max_tokens: 300,
+    temperature: 0.45,
+    max_tokens: 420,
   });
 
-  return completion.choices[0]?.message?.content?.trim() || buildFallbackChatReply(userMessage, suggestedSlots, searchWindowDays);
+  return completion.choices[0]?.message?.content?.trim()
+    || buildFallbackChatReply(userMessage, candidateSlots.slice(0, 3), searchWindowDays, signals);
 }
 
 async function getDisplaySettingsForUser(
@@ -193,43 +433,6 @@ async function getDisplaySettingsForUser(
   const settings = await getAvailabilityDisplaySettings(supabase, userEmail, defaultDisplayWindowDays);
 
   return { supabase, settings };
-}
-
-async function getBookingCalendarSummary(userEmail: string) {
-  const calendarService = await serviceManager.getService<CalendarService>('calendar');
-  const serviceInfo = calendarService?.getBookingCalendarInfo();
-
-  if (serviceInfo?.calendarEmail) {
-    return {
-      calendar_email: serviceInfo.calendarEmail,
-      source: 'runtime',
-    };
-  }
-
-  const supabase = await serviceManager.getService<SupabaseClient>('supabase');
-
-  if (!supabase) {
-    return null;
-  }
-
-  const { data } = await supabase
-    .from('calendar_accounts')
-    .select('calendar_email')
-    .eq('user_email', userEmail)
-    .eq('is_active', true)
-    .order('is_primary', { ascending: false })
-    .order('priority', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!data?.calendar_email) {
-    return null;
-  }
-
-  return {
-    calendar_email: data.calendar_email,
-    source: 'database',
-  };
 }
 
 /**
@@ -411,7 +614,6 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
       }));
     }
 
-    const suggestedSlots = findSuggestedSlots(slotResponses, userMessage);
     const chatHistory: ChatMessage[] = Array.isArray(history)
       ? history
           .filter(
@@ -427,8 +629,16 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
       MAX_DISPLAY_DAYS,
       Math.max(displaySettings.displayWindowDays, DEFAULT_CHAT_SEARCH_WINDOW_DAYS)
     );
+    const signals = collectConversationSignals(userMessage, chatHistory);
+    const candidateSlots = findSuggestedSlots(slotResponses, signals, 6);
+    const suggestedSlots = candidateSlots.slice(0, 3);
 
-    let reply = buildFallbackChatReply(userMessage, suggestedSlots, chatSearchWindowDays);
+    let reply = buildFallbackChatReply(
+      userMessage,
+      suggestedSlots,
+      chatSearchWindowDays,
+      signals
+    );
     const openai = await serviceManager.getService<OpenAI>('openai');
 
     if (openai) {
@@ -437,9 +647,10 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
           openai,
           userMessage,
           chatHistory,
-          suggestedSlots,
+          candidateSlots,
           displaySettings.displayWindowDays,
-          chatSearchWindowDays
+          chatSearchWindowDays,
+          signals
         );
       } catch (error) {
         logger.warn('Falling back to deterministic booking chat reply:', error);
@@ -513,7 +724,6 @@ router.post('/holds/selection', async (req: Request, res: Response): Promise<voi
     res.json({
       success: true,
       hold_id: hold.holdId,
-      calendar_email: hold.calendarEmail,
       expires_at: hold.expiresAt.toISOString(),
     });
   } catch (error) {
@@ -579,7 +789,6 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
     userEmail,
     config.defaultBookingWindowDays
   );
-  const bookingCalendar = await getBookingCalendarSummary(userEmail);
 
   res.json({
     enabled,
@@ -589,7 +798,6 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
       : 'Availability sent via email after booking submission',
     display_window_days: displaySettings.displayWindowDays,
     ai_concierge_enabled: displaySettings.aiConciergeEnabled,
-    booking_calendar: bookingCalendar,
   });
 });
 

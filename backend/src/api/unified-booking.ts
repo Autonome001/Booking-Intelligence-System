@@ -617,12 +617,11 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
 
         if (calendarConfirmation.confirmed) {
           (result as Record<string, unknown>)['calendar_confirmed'] = true;
-          (result as Record<string, unknown>)['calendar_email'] = calendarConfirmation.calendar_email;
           (result as Record<string, unknown>)['calendar_event_id'] = calendarConfirmation.event_id;
           (result as Record<string, unknown>)['meeting_link'] = calendarConfirmation.meeting_link;
           (result as Record<string, unknown>)['confirmed_start'] = calendarConfirmation.start;
           (result as Record<string, unknown>)['confirmed_end'] = calendarConfirmation.end;
-          result.message = `Your consultation is booked on ${calendarConfirmation.calendar_email}. A calendar invite has been sent to ${req.body.email}.`;
+          result.message = `Your consultation is confirmed. A calendar invite has been sent to ${req.body.email}.`;
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
