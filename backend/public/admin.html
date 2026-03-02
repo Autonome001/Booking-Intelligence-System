@@ -339,35 +339,76 @@
     </div>
 
     <!-- Instructions Card -->
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">
-          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          How It Works
-        </h3>
+    <div class="card admin-guide-card">
+      <div class="card-header admin-guide-heading">
+        <div>
+          <h3 class="card-title">
+            <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            How It Works
+          </h3>
+          <p class="card-subtitle">A clean view of the scheduling flow, plus a quick way to preview the live customer experience without leaving the admin console.</p>
+        </div>
+
+        <a href="/" target="_blank" rel="noopener noreferrer" class="admin-scheduler-cta">
+          <span class="admin-scheduler-cta-eyebrow">Customer Experience</span>
+          <span class="admin-scheduler-cta-title">Open Live Scheduler</span>
+          <span class="admin-scheduler-cta-copy">Preview the public booking page in a new tab.</span>
+          <span class="admin-scheduler-cta-action">
+            <span>Launch Preview</span>
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8"/>
+            </svg>
+          </span>
+        </a>
       </div>
 
-      <div style="line-height: 1.8;">
-        <p style="margin-bottom: 1rem;"><strong>1. Connect Your Calendars</strong></p>
-        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">Click "Connect Google Calendar" above to add each of your personal and business calendars. You can connect up to 7 calendars.</p>
+      <div class="admin-guide-grid">
+        <article class="admin-guide-step">
+          <div class="admin-guide-step-badge">1</div>
+          <div class="admin-guide-step-body">
+            <h4>Connect Your Calendars</h4>
+            <p>Add each personal or business calendar you want included in your availability. The system supports up to 7 connected calendars.</p>
+          </div>
+        </article>
 
-        <p style="margin-bottom: 1rem;"><strong>2. Unified Availability</strong></p>
-        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">The system checks ALL connected calendars to show your true availability. A time slot is only shown if you're free across all calendars.</p>
+        <article class="admin-guide-step">
+          <div class="admin-guide-step-badge">2</div>
+          <div class="admin-guide-step-body">
+            <h4>Unified Availability</h4>
+            <p>Only truly open times are shown. A slot appears for customers only when you are free across every active connected calendar.</p>
+          </div>
+        </article>
 
-        <p style="margin-bottom: 1rem;"><strong>3. Real-time Updates</strong></p>
-        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">When you create or edit events in Google Calendar, webhooks automatically update your availability (no manual refresh needed).</p>
+        <article class="admin-guide-step">
+          <div class="admin-guide-step-badge">3</div>
+          <div class="admin-guide-step-body">
+            <h4>Live Sync</h4>
+            <p>As you create or edit events in Google Calendar, your booking availability updates automatically so customers always see a current schedule.</p>
+          </div>
+        </article>
 
-        <p style="margin-bottom: 1rem;"><strong>4. Booking Flow</strong></p>
-        <p style="color: var(--gray-600);">Customers see your unified availability on the <a href="/">booking page</a>, select a time, and submit their request. The confirmed meeting is then posted to the calendar marked as the booking destination.</p>
+        <article class="admin-guide-step">
+          <div class="admin-guide-step-badge">4</div>
+          <div class="admin-guide-step-body">
+            <h4>Booking Flow</h4>
+            <p>Customers choose from your live availability, submit their request, and the confirmed consultation is posted to the calendar you marked as the booking destination.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="admin-guide-footer">
+        <div class="admin-guide-note">
+          Keep this admin page open while testing. The scheduler opens in a separate tab so you can verify the customer experience without losing your current configuration view.
+        </div>
       </div>
     </div>
   </main>
 
   <!-- Footer -->
   <footer class="footer">
-    <p>Powered by <a href="https://autonome.us">Autonome.us</a> | <a href="/">Back to Booking Form</a></p>
+    <p>Powered by <a href="https://autonome.us" target="_blank" rel="noopener noreferrer">Autonome.us</a> | Booking Admin Console</p>
   </footer>
 
   <script src="/admin.js"></script>
