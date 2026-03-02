@@ -9,6 +9,7 @@ import {
   getEmailErrorMessage,
   sendTransactionalEmail,
 } from '../services/email/sendTransactionalEmail.js';
+import { normalizeCustomerFacingEmailCopy } from '../services/email/normalizeCustomerFacingEmailCopy.js';
 import { getServiceConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
@@ -37,6 +38,17 @@ interface SlackMessage {
   thread_ts?: string;
   text?: string;
   bot_id?: string;
+  blocks?: Array<{
+    type?: string;
+    text?: {
+      type?: string;
+      text?: string;
+    };
+    fields?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+  }>;
 }
 
 interface SlackPayload {
@@ -146,9 +158,98 @@ function buildBookingEmailSubject(booking: BookingEmailRecord): string {
 }
 
 function buildBookingEmailBody(booking: BookingEmailRecord): string {
-  const baseBody = booking.drafted_email?.trim() || '';
+  const baseBody = normalizeCustomerFacingEmailCopy(booking.drafted_email?.trim() || '');
   const footer = `\n\nBooking reference: ${booking.processing_id}\nReply directly to this email to continue scheduling with Autonome.`;
   return `${baseBody}${footer}`;
+}
+
+function extractFallbackBookingFromSlackMessage(
+  message: SlackMessage | undefined,
+  bookingId: string
+): BookingEmailRecord | null {
+  if (!message?.blocks?.length) {
+    return null;
+  }
+
+  let recipient: string | null = null;
+  let draftedEmail: string | null = null;
+  let customerName: string | null = null;
+  let companyName: string | null = null;
+
+  for (const block of message.blocks) {
+    if (Array.isArray(block.fields)) {
+      for (const field of block.fields) {
+        const text = field?.text || '';
+        const emailMatch = text.match(/\*Email:\*\s+([^\s]+)/);
+        if (emailMatch?.[1]) {
+          recipient = emailMatch[1].trim();
+        }
+
+        const customerMatch = text.match(/\*Customer:\*\s+(.+)/);
+        if (customerMatch?.[1]) {
+          customerName = customerMatch[1].trim();
+        }
+
+        const companyMatch = text.match(/\*Company:\*\s+(.+)/);
+        if (companyMatch?.[1] && companyMatch[1] !== 'Not specified') {
+          companyName = companyMatch[1].trim();
+        }
+      }
+    }
+
+    const blockText = block.text?.text || '';
+    if (blockText.includes('DRAFTED EMAIL RESPONSE:')) {
+      draftedEmail = blockText.replace(/^[\s\S]*DRAFTED EMAIL RESPONSE:\*\n*/u, '').trim();
+    }
+  }
+
+  if (!recipient || !draftedEmail) {
+    return null;
+  }
+
+  return {
+    processing_id: bookingId,
+    email_from: recipient,
+    customer_name: customerName,
+    company_name: companyName,
+    drafted_email: draftedEmail,
+    email_thread_id: null,
+  };
+}
+
+async function resolveBookingEmailRecord(
+  supabase: SupabaseClient,
+  bookingId: string,
+  fallbackMessage?: SlackMessage
+): Promise<BookingEmailRecord> {
+  const { data: bookings, error } = await supabase
+    .from('booking_inquiries')
+    .select('id, processing_id, email_from, customer_name, company_name, drafted_email, email_thread_id, updated_at')
+    .eq('processing_id', bookingId)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  if (error) {
+    throw new Error(`Booking lookup failed for email send: ${error.message}`);
+  }
+
+  if (Array.isArray(bookings) && bookings.length > 0) {
+    const preferredRecord = bookings.find(
+      (record) =>
+        Boolean((record as BookingEmailRecord).email_from)
+        && Boolean((record as BookingEmailRecord).drafted_email?.trim())
+    ) || bookings[0];
+
+    return preferredRecord as BookingEmailRecord;
+  }
+
+  const fallbackBooking = extractFallbackBookingFromSlackMessage(fallbackMessage, bookingId);
+  if (fallbackBooking) {
+    logger.warn(`Using Slack thread fallback email context for booking ${bookingId}`);
+    return fallbackBooking;
+  }
+
+  throw new Error(`Booking not found for email send: ${bookingId}`);
 }
 
 async function persistConversationTurn(
@@ -209,7 +310,8 @@ async function persistConversationTurn(
 }
 
 async function sendApprovedBookingEmail(
-  bookingId: string
+  bookingId: string,
+  fallbackMessage?: SlackMessage
 ): Promise<{ fromAddress: string; messageId: string | null }> {
   const supabase = await serviceManager.getService<SupabaseClient>('supabase');
   const emailService = await serviceManager.getService<Resend>('email');
@@ -222,15 +324,7 @@ async function sendApprovedBookingEmail(
     throw new Error('Email service not available');
   }
 
-  const { data: booking, error } = await supabase
-    .from('booking_inquiries')
-    .select('id, processing_id, email_from, customer_name, company_name, drafted_email, email_thread_id')
-    .eq('processing_id', bookingId)
-    .single<BookingEmailRecord>();
-
-  if (error || !booking) {
-    throw new Error(`Booking not found for email send: ${error?.message || bookingId}`);
-  }
+  const booking = await resolveBookingEmailRecord(supabase, bookingId, fallbackMessage);
 
   if (!booking.drafted_email?.trim()) {
     throw new Error(`No drafted email content available for booking ${bookingId}`);
@@ -251,16 +345,27 @@ async function sendApprovedBookingEmail(
     recipient: booking.email_from,
   });
 
-  await persistConversationTurn(supabase, booking, threadToken, booking.drafted_email);
+  await persistConversationTurn(
+    supabase,
+    booking,
+    threadToken,
+    normalizeCustomerFacingEmailCopy(booking.drafted_email)
+  );
 
-  const { error: updateError } = await supabase
-    .from('booking_inquiries')
-    .update({
-      status: 'sent',
-      email_thread_id: threadToken,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('processing_id', bookingId);
+  let updateError: { message?: string } | null = null;
+
+  if (booking.id) {
+    const updateResult = await supabase
+      .from('booking_inquiries')
+      .update({
+        status: 'sent',
+        email_thread_id: threadToken,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', booking.id);
+
+    updateError = updateResult.error;
+  }
 
   if (updateError) {
     logger.error(`Email sent but failed to update status for booking ${bookingId}:`, updateError);
@@ -575,7 +680,9 @@ Requirements:
       max_tokens: 600,
     });
 
-    const newDraftedEmail = revisedEmail.choices[0]?.message?.content?.trim() || '';
+    const newDraftedEmail = normalizeCustomerFacingEmailCopy(
+      revisedEmail.choices[0]?.message?.content?.trim() || ''
+    );
 
     // Create new approval message with revised email in the thread
     const revisionMessage = {
@@ -707,6 +814,8 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
       switch (action_id) {
         case 'approve_email':
           updateData.status = 'approved';
+          updateData.thread_ts = payload.message?.ts || payload.message_ts;
+          updateData.channel_id = realChannelId;
           responseText = '✅ Email approved! Customer will be contacted shortly.';
 
           shouldSendApprovedEmail = true;
@@ -817,7 +926,7 @@ router.post('/interactions', async (req: Request, res: Response): Promise<void> 
 
       if (shouldSendApprovedEmail && bookingId) {
         try {
-          const emailResult = await sendApprovedBookingEmail(bookingId);
+          const emailResult = await sendApprovedBookingEmail(bookingId, payload.message);
           await slack.chat.postMessage({
             channel: followUpChannelId,
             text: `Email sent successfully from ${emailResult.fromAddress} to the customer for booking ${bookingId}.${emailResult.messageId ? ` Resend message ID: ${emailResult.messageId}` : ''}`,

@@ -4,6 +4,7 @@ import type { WebClient } from '@slack/web-api';
 import type OpenAI from 'openai';
 import type { Resend } from 'resend';
 import { serviceManager } from '../services/serviceManager.js';
+import { normalizeCustomerFacingEmailCopy } from '../services/email/normalizeCustomerFacingEmailCopy.js';
 import { sendTransactionalEmail } from '../services/email/sendTransactionalEmail.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
@@ -146,7 +147,7 @@ function buildAutoReplyEmailSubject(booking: BookingLookupRecord): string {
 }
 
 function buildAutoReplyEmailBody(booking: BookingLookupRecord, draft: string): string {
-  return `${draft.trim()}\n\nBooking reference: ${booking.processing_id}\nReply directly to continue scheduling with Autonome.`;
+  return `${normalizeCustomerFacingEmailCopy(draft)}\n\nBooking reference: ${booking.processing_id}\nReply directly to continue scheduling with Autonome.`;
 }
 
 async function generateInboundReplyDraft(
@@ -199,7 +200,7 @@ Write the next best email response from the booking AI.`,
     throw new Error('Empty AI draft generated for inbound reply');
   }
 
-  return draftedReply;
+  return normalizeCustomerFacingEmailCopy(draftedReply);
 }
 
 async function sendAutomatedBookingReply(

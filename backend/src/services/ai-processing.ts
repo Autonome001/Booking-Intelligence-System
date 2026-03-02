@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { serviceManager } from './serviceManager.js';
 import { logger } from '../utils/logger.js';
 import { getServiceConfig } from '../utils/config.js';
+import { normalizeCustomerFacingEmailCopy } from './email/normalizeCustomerFacingEmailCopy.js';
 import { getSchedulingConfig, getBookingWindowHours } from '../utils/booking-rules.js';
 import type {
   AIAnalysis,
@@ -282,6 +283,9 @@ Requirements:
 - If calendar coordination is mentioned, include scheduling information
 - Keep it concise but personalized
 - Sign as "The Autonome.us Team"
+- Never mention any Gmail, personal, or non-company email address
+- If you mention an email contact, only use bookings@autonome.us
+- If you reference scheduling, use the live booking URL https://booking.autonome.us/
 
 For ${analysis.customer_tier} customers:
 - Basic: Focus on cost-effective solutions and clear ROI
@@ -314,7 +318,7 @@ AI Analysis:
   }
 
   logger.info('Email draft generated successfully');
-  return draftedEmail;
+  return normalizeCustomerFacingEmailCopy(draftedEmail);
 }
 
 /**
