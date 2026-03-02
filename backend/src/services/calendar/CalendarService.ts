@@ -62,6 +62,12 @@ export interface MultiCalendarProvisionalHold {
   expires_at: Date;
 }
 
+export interface BookingCalendarInfo {
+  providerId: string | null;
+  calendarEmail: string | null;
+  isConfigured: boolean;
+}
+
 interface AvailabilityCacheEntry {
   slots: TimeSlot[];
   cachedAt: Date;
@@ -73,6 +79,10 @@ export class CalendarService {
   private availabilityCache: Map<string, AvailabilityCacheEntry> = new Map();
   private cacheTTLMinutes = 15; // Configurable via YAML in production
   private availabilityUserEmail: string | null = null;
+  private bookingProviderId: string | null = null;
+  private bookingCalendarEmail: string | null = null;
+  private selectionHoldBySession: Map<string, string> = new Map();
+  private selectionHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   private getLocalDateParts(date: Date, timeZone: string): {
     dayOfWeek: number;
@@ -144,6 +154,8 @@ export class CalendarService {
 
     this.providers.clear();
     this.availabilityUserEmail = null;
+    this.bookingProviderId = null;
+    this.bookingCalendarEmail = null;
     console.log(`Initializing ${accounts.length} calendar provider(s)...`);
 
     for (const account of accounts as CalendarAccount[]) {
@@ -173,6 +185,13 @@ export class CalendarService {
           });
 
           this.providers.set(account.id, provider);
+          if (account.is_primary) {
+            this.bookingProviderId = account.id;
+            this.bookingCalendarEmail = account.calendar_email;
+          } else if (!this.bookingProviderId) {
+            this.bookingProviderId = account.id;
+            this.bookingCalendarEmail = account.calendar_email;
+          }
           console.log(`✓ Initialized calendar: ${account.calendar_email}`);
         }
       } catch (error) {
@@ -490,6 +509,83 @@ export class CalendarService {
     return this.providers.values().next().value;
   }
 
+  /**
+   * Get the admin-selected booking calendar.
+   */
+  getBookingCalendarInfo(): BookingCalendarInfo {
+    return {
+      providerId: this.bookingProviderId,
+      calendarEmail: this.bookingCalendarEmail,
+      isConfigured: Boolean(this.bookingProviderId && this.bookingCalendarEmail),
+    };
+  }
+
+  /**
+   * Create a provisional hold for the customer-selected slot on the designated booking calendar.
+   */
+  async createSelectionHold(
+    sessionId: string,
+    slot: { start: Date; end: Date },
+    expirationMinutes = 15
+  ): Promise<{ holdId: string; calendarEmail: string; expiresAt: Date }> {
+    const provider = this.getBookingProviderOrThrow();
+    const existingHoldId = this.selectionHoldBySession.get(sessionId);
+
+    if (existingHoldId) {
+      try {
+        await this.releaseSelectionHold(existingHoldId);
+      } catch (error) {
+        console.warn(`Failed to release previous selection hold ${existingHoldId}:`, error);
+      }
+    }
+
+    const hold = await provider.createProvisionalHold(
+      slot,
+      `selection_${sessionId}`,
+      expirationMinutes
+    );
+
+    this.selectionHoldBySession.set(sessionId, hold.id);
+    this.scheduleSelectionHoldExpiry(hold.id, sessionId, hold.expiresAt);
+    this.clearAvailabilityCache();
+
+    return {
+      holdId: hold.id,
+      calendarEmail: provider.calendarEmail,
+      expiresAt: hold.expiresAt,
+    };
+  }
+
+  /**
+   * Confirm a customer-selected provisional hold into a real calendar event.
+   */
+  async confirmSelectionHold(
+    holdId: string,
+    eventDetails: Partial<CalendarEvent>
+  ): Promise<{ event: CalendarEvent; calendarEmail: string }> {
+    const provider = this.getProviderForHoldOrThrow(holdId);
+    const event = await provider.confirmProvisionalHold(holdId, eventDetails);
+
+    this.removeSelectionHoldReferences(holdId);
+    this.clearAvailabilityCache();
+
+    return {
+      event,
+      calendarEmail: provider.calendarEmail,
+    };
+  }
+
+  /**
+   * Release a customer-selected provisional hold.
+   */
+  async releaseSelectionHold(holdId: string): Promise<void> {
+    const provider = this.getProviderForHoldOrThrow(holdId);
+    await provider.releaseProvisionalHold(holdId);
+
+    this.removeSelectionHoldReferences(holdId);
+    this.clearAvailabilityCache();
+  }
+
   // ====================================================================
   // PRIVATE HELPER METHODS
   // ====================================================================
@@ -572,6 +668,75 @@ export class CalendarService {
     });
 
     await Promise.all(rollbackPromises);
+  }
+
+  private getBookingProviderOrThrow(): ICalendarProvider {
+    const providerId = this.bookingProviderId || this.providers.keys().next().value;
+    const provider = providerId ? this.providers.get(providerId) : undefined;
+
+    if (!provider) {
+      throw new Error('No designated booking calendar is configured');
+    }
+
+    return provider;
+  }
+
+  private getProviderForHoldOrThrow(holdId: string): ICalendarProvider {
+    const providerId = holdId.split(':')[0];
+    const provider = providerId ? this.providers.get(providerId) : undefined;
+
+    if (!provider) {
+      throw new Error(`Booking calendar provider ${providerId || 'unknown'} is not available`);
+    }
+
+    return provider;
+  }
+
+  private clearSelectionHoldTimeout(holdId: string): void {
+    const timeout = this.selectionHoldTimers.get(holdId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.selectionHoldTimers.delete(holdId);
+    }
+  }
+
+  private removeSelectionHoldReferences(holdId: string): void {
+    this.clearSelectionHoldTimeout(holdId);
+
+    for (const [sessionId, mappedHoldId] of this.selectionHoldBySession.entries()) {
+      if (mappedHoldId === holdId) {
+        this.selectionHoldBySession.delete(sessionId);
+      }
+    }
+  }
+
+  private scheduleSelectionHoldExpiry(
+    holdId: string,
+    sessionId: string,
+    expiresAt: Date
+  ): void {
+    this.clearSelectionHoldTimeout(holdId);
+
+    const msUntilExpiry = Math.max(1_000, expiresAt.getTime() - Date.now());
+    const timeout = setTimeout(async () => {
+      const mappedHoldId = this.selectionHoldBySession.get(sessionId);
+
+      if (mappedHoldId !== holdId) {
+        this.selectionHoldTimers.delete(holdId);
+        return;
+      }
+
+      try {
+        const provider = this.getProviderForHoldOrThrow(holdId);
+        await provider.releaseProvisionalHold(holdId);
+      } catch (error) {
+        console.warn(`Failed to release expired selection hold ${holdId}:`, error);
+      } finally {
+        this.removeSelectionHoldReferences(holdId);
+      }
+    }, msUntilExpiry);
+
+    this.selectionHoldTimers.set(holdId, timeout);
   }
 
   /**

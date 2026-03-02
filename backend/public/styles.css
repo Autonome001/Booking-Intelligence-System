@@ -600,6 +600,41 @@ body::before {
   box-shadow: 0 0 20px var(--electric-blue-glow);
 }
 
+.slot-card.is-pending {
+  opacity: 0.7;
+  pointer-events: none;
+  border-style: dashed;
+}
+
+.booking-calendar-notice {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(15, 23, 42, 0.6));
+}
+
+.booking-calendar-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--electric-blue);
+  margin-bottom: 0.35rem;
+}
+
+.booking-calendar-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.booking-calendar-copy {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
 .slot-date {
   font-size: 0.8rem;
   font-weight: 700;

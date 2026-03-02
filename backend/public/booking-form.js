@@ -8,12 +8,17 @@ let maxDisplayDays = 20;
 let aiConciergeEnabled = true;
 let bookingChatHistory = [];
 let isBookingChatLoading = false;
+let bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+let selectedHoldId = null;
+let bookingCalendarEmail = '';
+let isSlotSelectionPending = false;
 
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
   applyDisplayMode();
+  document.getElementById('booking-session-id').value = bookingSessionId;
   setupFormValidation();
   setupCharacterCounter();
   setupFormSubmission();
@@ -32,6 +37,33 @@ function applyDisplayMode() {
   }
 }
 
+function updateBookingCalendarNotice() {
+  const notice = document.getElementById('booking-calendar-notice');
+  const nameEl = document.getElementById('booking-calendar-name');
+
+  if (!notice || !nameEl) {
+    return;
+  }
+
+  if (!bookingCalendarEmail) {
+    notice.classList.add('hidden');
+    nameEl.textContent = '';
+    return;
+  }
+
+  nameEl.textContent = bookingCalendarEmail;
+  notice.classList.remove('hidden');
+}
+
+function setSubmitButtonPending(isPending) {
+  const submitButton = document.getElementById('submit-btn');
+  if (!submitButton) {
+    return;
+  }
+
+  submitButton.disabled = isPending;
+}
+
 // ============================================
 // FEATURE FLAG CHECK
 // ============================================
@@ -42,6 +74,8 @@ async function checkAvailabilityFeatureFlag() {
 
     maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
     aiConciergeEnabled = data.ai_concierge_enabled !== false;
+    bookingCalendarEmail = data.booking_calendar?.calendar_email || '';
+    updateBookingCalendarNotice();
 
     const conciergeSection = document.getElementById('ai-concierge-section');
     if (aiConciergeEnabled) {
@@ -132,6 +166,7 @@ function syncSelectedSlotUI() {
   document.querySelectorAll('.slot-card').forEach((card) => {
     const matches = selectedSlot && card.dataset.slotStart === selectedSlot.start;
     card.classList.toggle('selected', Boolean(matches));
+    card.classList.toggle('is-pending', Boolean(matches && isSlotSelectionPending));
     const checkIcon = card.querySelector('.check-icon');
     if (checkIcon) {
       checkIcon.style.opacity = matches ? '1' : '0';
@@ -139,11 +174,78 @@ function syncSelectedSlotUI() {
   });
 
   document.getElementById('selected-slot').value = selectedSlot ? JSON.stringify(selectedSlot) : '';
+  document.getElementById('selected-hold-id').value = selectedHoldId || '';
 }
 
-function selectSlot(slot) {
+async function reserveSelectedSlot(slot) {
+  const response = await fetch('/api/calendar/holds/selection', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      session_id: bookingSessionId,
+      slot_start: slot.start,
+      slot_end: slot.end,
+      expiration_minutes: 15,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Failed to reserve the selected slot');
+  }
+
+  return result;
+}
+
+async function releaseSelectedSlotHold() {
+  if (!selectedHoldId) {
+    return;
+  }
+
+  try {
+    await fetch(`/api/calendar/holds/selection/${encodeURIComponent(selectedHoldId)}`, {
+      method: 'DELETE',
+    });
+  } catch (error) {
+    console.warn('Failed to release slot hold:', error);
+  } finally {
+    selectedHoldId = null;
+  }
+}
+
+async function selectSlot(slot) {
+  if (isSlotSelectionPending) {
+    return;
+  }
+
+  isSlotSelectionPending = true;
+  setSubmitButtonPending(true);
   selectedSlot = slot;
   syncSelectedSlotUI();
+
+  try {
+    const holdResult = await reserveSelectedSlot(slot);
+    selectedHoldId = holdResult.hold_id;
+    bookingCalendarEmail = holdResult.calendar_email || bookingCalendarEmail;
+    selectedSlot = {
+      ...slot,
+      hold_expires_at: holdResult.expires_at,
+    };
+    updateBookingCalendarNotice();
+    syncSelectedSlotUI();
+  } catch (error) {
+    selectedSlot = null;
+    selectedHoldId = null;
+    syncSelectedSlotUI();
+    showErrorMessage(error.message || 'We could not reserve that slot. Please try another time.');
+  } finally {
+    isSlotSelectionPending = false;
+    setSubmitButtonPending(false);
+    syncSelectedSlotUI();
+  }
 }
 
 function createSlotCard(slot) {
@@ -190,8 +292,9 @@ function createSlotCard(slot) {
 // WEEK NAVIGATION
 // ============================================
 function setupWeekNavigation() {
-  document.getElementById('prev-week')?.addEventListener('click', () => {
+  document.getElementById('prev-week')?.addEventListener('click', async () => {
     if (currentWeekOffset > 0) {
+      await releaseSelectedSlotHold();
       currentWeekOffset--;
       fetchAvailability(currentWeekOffset);
       selectedSlot = null;
@@ -199,11 +302,12 @@ function setupWeekNavigation() {
     }
   });
 
-  document.getElementById('next-week')?.addEventListener('click', () => {
+  document.getElementById('next-week')?.addEventListener('click', async () => {
     if (((currentWeekOffset + 1) * 7) >= maxDisplayDays) {
       return;
     }
 
+    await releaseSelectedSlotHold();
     currentWeekOffset++;
     fetchAvailability(currentWeekOffset);
     selectedSlot = null;
@@ -465,6 +569,11 @@ function setupFormSubmission() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
 
+    if (isSlotSelectionPending) {
+      showErrorMessage('Please wait while we reserve your selected time slot.');
+      return;
+    }
+
     const isNameValid = validateField('name');
     const isEmailValid = validateField('email');
     const isMessageValid = validateField('message');
@@ -492,6 +601,9 @@ function setupFormSubmission() {
 
     if (selectedSlot) {
       formData.preferred_date = new Date(selectedSlot.start).toISOString();
+      formData.selected_slot_end = new Date(selectedSlot.end).toISOString();
+      formData.provisional_hold_id = selectedHoldId;
+      formData.booking_session_id = bookingSessionId;
     }
 
     showLoading();
@@ -514,6 +626,9 @@ function setupFormSubmission() {
         form.reset();
         document.getElementById('char-count').textContent = '0';
         selectedSlot = null;
+        selectedHoldId = null;
+        bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        document.getElementById('booking-session-id').value = bookingSessionId;
         syncSelectedSlotUI();
         setupBookingChat();
       } else {
@@ -550,7 +665,41 @@ function hideLoading() {
 }
 
 function showSuccess(result) {
+  const successTitle = document.getElementById('success-title');
+  const successBody = document.getElementById('success-body');
+  const successDetails = document.getElementById('success-details');
+
   document.getElementById('booking-id-display').textContent = result.booking_id;
+
+  if (result.calendar_confirmed) {
+    successTitle.textContent = 'Consultation Booked';
+    successBody.textContent = `Your consultation is confirmed on ${result.calendar_email}. A calendar invite has been sent to your email address.`;
+
+    const detailParts = [];
+    if (result.confirmed_start) {
+      const confirmedStart = new Date(result.confirmed_start);
+      detailParts.push(`Scheduled for ${confirmedStart.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/New_York' })} EST`);
+    }
+    if (result.meeting_link) {
+      detailParts.push(`Google Meet: ${result.meeting_link}`);
+    }
+
+    if (detailParts.length > 0) {
+      successDetails.textContent = detailParts.join(' | ');
+      successDetails.classList.remove('hidden');
+    } else {
+      successDetails.textContent = '';
+      successDetails.classList.add('hidden');
+    }
+  } else {
+    successTitle.textContent = 'Consultation Request Received';
+    successBody.textContent = result.message || 'Your request has been processed. A strategist will contact you shortly via our official channels.';
+    successDetails.textContent = bookingCalendarEmail
+      ? `Booking destination: ${bookingCalendarEmail}`
+      : '';
+    successDetails.classList.toggle('hidden', !successDetails.textContent);
+  }
+
   document.getElementById('success-message').classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 

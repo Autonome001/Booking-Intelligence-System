@@ -217,7 +217,7 @@ function createCalendarCard(calendar) {
     <div class="calendar-account-info">
       <div class="calendar-account-email">
         ${calendar.calendar_email}
-        ${calendar.is_primary ? '<span style="color: var(--warning); font-size: 0.875rem; margin-left: 0.5rem;">(Primary)</span>' : ''}
+        ${calendar.is_primary ? '<span style="color: var(--warning); font-size: 0.875rem; margin-left: 0.5rem;">(Booking Destination)</span>' : ''}
       </div>
       <div class="calendar-account-meta">
         Connected: ${connectedDate} | Status: ${calendar.is_active ? '<span style="color: var(--success);">✓ Active</span>' : '<span style="color: var(--warning);">⚠ Inactive</span>'}
@@ -226,6 +226,18 @@ function createCalendarCard(calendar) {
     </div>
 
     <div class="calendar-account-actions">
+        <button
+          type="button"
+          class="btn ${calendar.is_primary ? 'btn-secondary' : 'btn-primary'} btn-sm"
+          onclick="setPrimaryCalendar('${calendar.id}', '${calendar.calendar_email}')"
+          title="${calendar.is_primary ? 'This is the current booking destination' : 'Use this calendar for confirmed bookings'}"
+          ${calendar.is_primary ? 'disabled' : ''}
+      >
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l3 7h7l-5.5 4.2L16.5 21 12 16.8 7.5 21l2-7.8L4 9h7z"/>
+        </svg>
+        <span>${calendar.is_primary ? 'Booking Calendar' : 'Use for Booking'}</span>
+      </button>
         <button
           type="button"
           class="btn btn-secondary btn-sm"
@@ -284,6 +296,27 @@ function connectCalendar() {
   // Redirect to OAuth authorization endpoint
   const authUrl = `/api/calendar/oauth/authorize?user_email=${encodeURIComponent(USER_EMAIL)}`;
   window.location.href = authUrl;
+}
+
+async function setPrimaryCalendar(calendarId, calendarEmail) {
+  try {
+    const response = await fetch(`/api/calendar/oauth/accounts/${calendarId}/primary`, {
+      method: 'PUT',
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to update the booking destination calendar');
+    }
+
+    showNotification('success', `${calendarEmail} is now the booking destination calendar`);
+    await loadCalendars();
+    await loadSystemStatus();
+  } catch (error) {
+    console.error('Failed to set primary calendar:', error);
+    showNotification('error', error.message || 'Failed to update the booking destination calendar');
+  }
 }
 
 // ============================================
@@ -1011,6 +1044,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Make functions globally available for onclick handlers
 window.disconnectCalendar = disconnectCalendar;
 window.refreshCalendar = refreshCalendar;
+window.setPrimaryCalendar = setPrimaryCalendar;
 window.switchTab = switchTab;
 window.deleteBlackout = deleteBlackout;
 window.toggleDayInputs = toggleDayInputs;

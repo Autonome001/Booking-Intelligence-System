@@ -22,6 +22,85 @@ async function refreshCalendarRuntimeState(): Promise<void> {
   calendarService?.invalidateAvailabilityCache();
 }
 
+async function promoteHighestPriorityCalendar(
+  supabase: SupabaseClient,
+  userEmail: string
+): Promise<void> {
+  const { data: fallbackCalendar } = await supabase
+    .from('calendar_accounts')
+    .select('id')
+    .eq('user_email', userEmail)
+    .eq('is_active', true)
+    .order('priority', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!fallbackCalendar?.id) {
+    return;
+  }
+
+  await supabase
+    .from('calendar_accounts')
+    .update({ is_primary: false })
+    .eq('user_email', userEmail)
+    .eq('is_active', true);
+
+  await supabase
+    .from('calendar_accounts')
+    .update({ is_primary: true })
+    .eq('id', fallbackCalendar.id);
+}
+
+async function setPrimaryCalendarAccount(
+  supabase: SupabaseClient,
+  calendarId: string
+): Promise<{ calendarEmail: string; userEmail: string }> {
+  const { data: targetCalendar, error: targetError } = await supabase
+    .from('calendar_accounts')
+    .select('id, user_email, calendar_email')
+    .eq('id', calendarId)
+    .eq('is_active', true)
+    .single();
+
+  if (targetError || !targetCalendar) {
+    throw new Error(`Calendar not found: ${targetError?.message || calendarId}`);
+  }
+
+  const { data: activeCalendars } = await supabase
+    .from('calendar_accounts')
+    .select('id, priority')
+    .eq('user_email', targetCalendar.user_email)
+    .eq('is_active', true);
+
+  const nextPriority =
+    (activeCalendars || []).reduce((max, calendar: { priority?: number }) => {
+      return Math.max(max, typeof calendar.priority === 'number' ? calendar.priority : 0);
+    }, 0) + 1;
+
+  await supabase
+    .from('calendar_accounts')
+    .update({ is_primary: false })
+    .eq('user_email', targetCalendar.user_email)
+    .eq('is_active', true);
+
+  const { error: updateError } = await supabase
+    .from('calendar_accounts')
+    .update({
+      is_primary: true,
+      priority: nextPriority,
+    })
+    .eq('id', calendarId);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  return {
+    calendarEmail: targetCalendar.calendar_email,
+    userEmail: targetCalendar.user_email,
+  };
+}
+
 /**
  * Authorization Initiation Endpoint
  * GET /api/calendar/oauth/authorize?user_email=dev@autonome.us
@@ -130,6 +209,14 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const { data: existingPrimary } = await supabase
+      .from('calendar_accounts')
+      .select('id')
+      .eq('user_email', user_email)
+      .eq('is_active', true)
+      .eq('is_primary', true)
+      .maybeSingle();
+
     // Insert new calendar account
     const { error: insertError } = await supabase
       .from('calendar_accounts')
@@ -142,8 +229,8 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
           refresh_token: tokens.refresh_token,
           expiry_date: tokens.expiry_date,
         },
-        is_primary: false,
-        priority: 1,
+        is_primary: !existingPrimary,
+        priority: existingPrimary ? 1 : 100,
         is_active: true,
       });
 
@@ -247,6 +334,53 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * Set the designated booking calendar.
+ * PUT /api/calendar/oauth/accounts/:id/primary
+ */
+router.put('/accounts/:id/primary', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  if (!id) {
+    res.status(400).json({ error: 'Calendar ID is required' });
+    return;
+  }
+
+  try {
+    const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+
+    if (!supabase) {
+      res.status(503).json({ error: 'Database service not available' });
+      return;
+    }
+
+    const tableStatus = await ensureCalendarAccountsTable(supabase);
+
+    if (!tableStatus.ready) {
+      res.status(503).json({
+        error: 'Calendar storage is unavailable',
+        details: tableStatus.reason,
+      });
+      return;
+    }
+
+    const result = await setPrimaryCalendarAccount(supabase, id);
+    await refreshCalendarRuntimeState();
+
+    res.json({
+      success: true,
+      calendar_id: id,
+      calendar_email: result.calendarEmail,
+      user_email: result.userEmail,
+      message: `${result.calendarEmail} is now the booking destination`,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Failed to set primary calendar:', errorMessage);
+    res.status(500).json({ error: 'Failed to set booking destination calendar' });
+  }
+});
+
+/**
  * Disconnect Calendar
  * DELETE /api/calendar/accounts/:id
  *
@@ -273,6 +407,12 @@ router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void
       return;
     }
 
+    const { data: existingCalendar } = await supabase
+      .from('calendar_accounts')
+      .select('user_email, calendar_email, is_primary')
+      .eq('id', id)
+      .maybeSingle();
+
     // Soft delete (set is_active = false)
     const { error } = await supabase
       .from('calendar_accounts')
@@ -281,6 +421,10 @@ router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void
 
     if (error) {
       throw error;
+    }
+
+    if (existingCalendar?.user_email && existingCalendar.is_primary) {
+      await promoteHighestPriorityCalendar(supabase, existingCalendar.user_email);
     }
 
       logger.info(`Calendar account ${id} disconnected`);

@@ -195,6 +195,43 @@ async function getDisplaySettingsForUser(
   return { supabase, settings };
 }
 
+async function getBookingCalendarSummary(userEmail: string) {
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  const serviceInfo = calendarService?.getBookingCalendarInfo();
+
+  if (serviceInfo?.calendarEmail) {
+    return {
+      calendar_email: serviceInfo.calendarEmail,
+      source: 'runtime',
+    };
+  }
+
+  const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from('calendar_accounts')
+    .select('calendar_email')
+    .eq('user_email', userEmail)
+    .eq('is_active', true)
+    .order('is_primary', { ascending: false })
+    .order('priority', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.calendar_email) {
+    return null;
+  }
+
+  return {
+    calendar_email: data.calendar_email,
+    source: 'database',
+  };
+}
+
 /**
  * Get Available Time Slots
  * GET /api/calendar/availability?duration=30&start=2026-03-01
@@ -432,6 +469,105 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * Create a provisional hold for a customer-selected slot on the designated booking calendar.
+ * POST /api/calendar/holds/selection
+ */
+router.post('/holds/selection', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const calendarService = await serviceManager.getService<CalendarService>('calendar');
+    const { session_id, slot_start, slot_end, expiration_minutes } = req.body ?? {};
+
+    if (!calendarService) {
+      res.status(503).json({
+        success: false,
+        error: 'Calendar service not available',
+      });
+      return;
+    }
+
+    if (typeof session_id !== 'string' || !session_id.trim()) {
+      res.status(400).json({
+        success: false,
+        error: 'session_id is required',
+      });
+      return;
+    }
+
+    const start = new Date(typeof slot_start === 'string' ? slot_start : '');
+    const end = new Date(typeof slot_end === 'string' ? slot_end : '');
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      res.status(400).json({
+        success: false,
+        error: 'A valid slot_start and slot_end are required',
+      });
+      return;
+    }
+
+    const hold = await calendarService.createSelectionHold(
+      session_id.trim(),
+      { start, end },
+      Number.isInteger(expiration_minutes) ? expiration_minutes : 15
+    );
+
+    res.json({
+      success: true,
+      hold_id: hold.holdId,
+      calendar_email: hold.calendarEmail,
+      expires_at: hold.expiresAt.toISOString(),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Selection hold creation failed:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: errorMessage,
+    });
+  }
+});
+
+/**
+ * Release a provisional hold when a customer changes their selected slot.
+ * DELETE /api/calendar/holds/selection/:holdId
+ */
+router.delete('/holds/selection/:holdId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const calendarService = await serviceManager.getService<CalendarService>('calendar');
+    const holdId = typeof req.params['holdId'] === 'string' ? decodeURIComponent(req.params['holdId']) : '';
+
+    if (!calendarService) {
+      res.status(503).json({
+        success: false,
+        error: 'Calendar service not available',
+      });
+      return;
+    }
+
+    if (!holdId) {
+      res.status(400).json({
+        success: false,
+        error: 'holdId is required',
+      });
+      return;
+    }
+
+    await calendarService.releaseSelectionHold(holdId);
+
+    res.json({
+      success: true,
+      hold_id: holdId,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Selection hold release failed:', errorMessage);
+    res.status(500).json({
+      success: false,
+      error: errorMessage,
+    });
+  }
+});
+
+/**
  * Get Feature Flag for Calendar Slot Display
  * GET /api/calendar/config/show-slots
  */
@@ -443,6 +579,7 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
     userEmail,
     config.defaultBookingWindowDays
   );
+  const bookingCalendar = await getBookingCalendarSummary(userEmail);
 
   res.json({
     enabled,
@@ -452,6 +589,7 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
       : 'Availability sent via email after booking submission',
     display_window_days: displaySettings.displayWindowDays,
     ai_concierge_enabled: displaySettings.aiConciergeEnabled,
+    booking_calendar: bookingCalendar,
   });
 });
 

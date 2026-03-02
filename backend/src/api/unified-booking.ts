@@ -13,6 +13,7 @@ import {
   saveMeetingNotificationSettings,
   type MeetingNotificationSettings,
 } from '../services/notifications/meetingNotificationSettings.js';
+import type { CalendarService } from '../services/calendar/CalendarService.js';
 import type { BookingResponse } from '../../../src/types/index.js';
 
 const router: Router = express.Router();
@@ -29,6 +30,9 @@ interface BookingData {
   phone?: string;
   inquiry_type?: string;
   preferred_date?: string;
+  selected_slot_end?: string;
+  provisional_hold_id?: string;
+  booking_session_id?: string;
   user_agent?: string;
 }
 
@@ -281,6 +285,102 @@ async function persistConversationTurn(
   }
 }
 
+function buildConfirmedMeetingSummary(bookingData: BookingData): string {
+  const company = bookingData.company?.trim();
+  if (company) {
+    return `Autonome Strategic Consultation with ${company}`;
+  }
+
+  return `Autonome Strategic Consultation with ${bookingData.name.trim()}`;
+}
+
+function buildConfirmedMeetingDescription(
+  bookingData: BookingData,
+  bookingId: string
+): string {
+  const lines = [
+    `Booking reference: ${bookingId}`,
+    `Customer: ${bookingData.name}`,
+    `Email: ${bookingData.email}`,
+  ];
+
+  if (bookingData.company?.trim()) {
+    lines.push(`Company: ${bookingData.company.trim()}`);
+  }
+
+  if (bookingData.phone?.trim()) {
+    lines.push(`Phone: ${bookingData.phone.trim()}`);
+  }
+
+  lines.push('', 'Strategic intent:', bookingData.message.trim());
+
+  return lines.join('\n');
+}
+
+async function confirmCalendarBooking(
+  bookingData: BookingData,
+  bookingId: string
+): Promise<{
+  confirmed: boolean;
+  calendar_email?: string;
+  event_id?: string;
+  meeting_link?: string;
+  start?: string;
+  end?: string;
+}> {
+  const holdId = typeof bookingData.provisional_hold_id === 'string'
+    ? bookingData.provisional_hold_id.trim()
+    : '';
+
+  if (!holdId) {
+    return { confirmed: false };
+  }
+
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+
+  if (!calendarService) {
+    throw new Error('Calendar service not available for booking confirmation');
+  }
+
+  const confirmed = await calendarService.confirmSelectionHold(holdId, {
+    summary: buildConfirmedMeetingSummary(bookingData),
+    description: buildConfirmedMeetingDescription(bookingData, bookingId),
+    attendees: [bookingData.email],
+    location: 'Autonome Partners Google Meet',
+    meetingLink: 'generate',
+  });
+
+  const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+
+  if (supabase) {
+    const updatePayload: Record<string, unknown> = {
+      assigned_calendar_email: confirmed.calendarEmail,
+      confirmed_event_id: confirmed.event.id,
+      selected_slot_start: confirmed.event.start.toISOString(),
+      selected_slot_end: confirmed.event.end.toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('booking_inquiries')
+      .update(updatePayload)
+      .eq('processing_id', bookingId);
+
+    if (error) {
+      logger.warn(`Calendar event confirmed but booking row update failed for ${bookingId}:`, error);
+    }
+  }
+
+  return {
+    confirmed: true,
+    calendar_email: confirmed.calendarEmail,
+    event_id: confirmed.event.id,
+    meeting_link: confirmed.event.meetingLink,
+    start: confirmed.event.start.toISOString(),
+    end: confirmed.event.end.toISOString(),
+  };
+}
+
 /**
  * Validate booking request
  */
@@ -498,6 +598,40 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
 
       default:
         throw new Error(`Unknown processing mode: ${processingMode}`);
+    }
+
+    let calendarConfirmation:
+      | {
+        confirmed: boolean;
+        calendar_email?: string;
+        event_id?: string;
+        meeting_link?: string;
+        start?: string;
+        end?: string;
+      }
+      | null = null;
+
+    if ((result as { success?: boolean }).success && typeof req.body?.['provisional_hold_id'] === 'string') {
+      try {
+        calendarConfirmation = await confirmCalendarBooking(req.body as BookingData, requestId);
+
+        if (calendarConfirmation.confirmed) {
+          (result as Record<string, unknown>)['calendar_confirmed'] = true;
+          (result as Record<string, unknown>)['calendar_email'] = calendarConfirmation.calendar_email;
+          (result as Record<string, unknown>)['calendar_event_id'] = calendarConfirmation.event_id;
+          (result as Record<string, unknown>)['meeting_link'] = calendarConfirmation.meeting_link;
+          (result as Record<string, unknown>)['confirmed_start'] = calendarConfirmation.start;
+          (result as Record<string, unknown>)['confirmed_end'] = calendarConfirmation.end;
+          result.message = `Your consultation is booked on ${calendarConfirmation.calendar_email}. A calendar invite has been sent to ${req.body.email}.`;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`Calendar confirmation failed for ${requestId}: ${errorMessage}`);
+        (result as Record<string, unknown>)['calendar_confirmed'] = false;
+        (result as Record<string, unknown>)['calendar_confirmation_error'] = errorMessage;
+        result.message =
+          'Your request was received, but we could not finalize the calendar invite automatically. Our team will follow up manually.';
+      }
     }
 
     // Add metadata

@@ -229,7 +229,10 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     }
 
     const hold = this.provisionalHolds.get(holdId);
-    if (!hold) {
+    const [, fallbackEventId = ''] = holdId.split(':');
+    const calendarEventId = hold?.calendarEventId || fallbackEventId;
+
+    if (!calendarEventId) {
       throw new ProvisionalHoldError(
         this.providerId,
         `Provisional hold ${holdId} not found`
@@ -240,7 +243,8 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       // Update event to confirmed status
       const event = await this.calendar.events.patch({
         calendarId: this.calendarId,
-        eventId: hold.calendarEventId,
+        eventId: calendarEventId,
+        sendUpdates: 'all',
         requestBody: {
           summary: eventDetails.summary || 'Confirmed Meeting',
           description: eventDetails.description,
@@ -251,7 +255,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           conferenceData: eventDetails.meetingLink
             ? {
               createRequest: {
-                requestId: `${hold.calendarEventId}-meet`,
+                requestId: `${calendarEventId}-meet`,
                 conferenceSolutionKey: { type: 'hangoutsMeet' },
               },
             }
@@ -259,7 +263,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           extendedProperties: {
             private: {
               type: 'confirmed_booking',
-              booking_inquiry_id: hold.metadata?.['bookingInquiryId'] as string,
+              booking_inquiry_id: hold?.metadata?.['bookingInquiryId'] as string,
             },
           },
         },
@@ -292,7 +296,10 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     }
 
     const hold = this.provisionalHolds.get(holdId);
-    if (!hold) {
+    const [, fallbackEventId = ''] = holdId.split(':');
+    const calendarEventId = hold?.calendarEventId || fallbackEventId;
+
+    if (!calendarEventId) {
       throw new ProvisionalHoldError(
         this.providerId,
         `Provisional hold ${holdId} not found`
@@ -302,7 +309,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     try {
       await this.calendar.events.delete({
         calendarId: this.calendarId,
-        eventId: hold.calendarEventId,
+        eventId: calendarEventId,
       });
 
       this.provisionalHolds.delete(holdId);
@@ -439,6 +446,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     try {
       const event = await this.calendar.events.insert({
         calendarId: this.calendarId,
+        sendUpdates: 'all',
         requestBody: {
           summary: eventDetails.summary,
           description: eventDetails.description,
@@ -479,6 +487,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       const event = await this.calendar.events.patch({
         calendarId: this.calendarId,
         eventId,
+        sendUpdates: 'all',
         requestBody: {
           summary: updates.summary,
           description: updates.description,

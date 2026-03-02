@@ -22,7 +22,7 @@
       </div>
 
       <h2>Strategic Consultation</h2>
-      <p>Schedule a private session to architect your future with bespoke AI-powered automation and intelligent systems.
+      <p>Schedule a private session to architect your future with bespoke AI-powered automations and intelligent systems.
       </p>
 
       <!-- Trust Indicators -->
@@ -72,8 +72,9 @@
         <polyline points="22 4 12 14.01 9 11.01" />
       </svg>
       <div>
-        <strong>Consultation Confirmed</strong>
-        <p>Your request has been processed. A strategist will contact you shortly via our official channels.</p>
+        <strong id="success-title">Consultation Confirmed</strong>
+        <p id="success-body">Your request has been processed. A strategist will contact you shortly via our official channels.</p>
+        <p id="success-details" class="text-sm opacity-70 hidden"></p>
         <p class="text-sm opacity-70">Reference ID: <span id="booking-id-display" class="font-mono"></span></p>
       </div>
     </div>
@@ -114,6 +115,12 @@
               Select Availability
             </h3>
             <p class="card-subtitle">Choose a window for your strategic consultation</p>
+          </div>
+
+          <div id="booking-calendar-notice" class="booking-calendar-notice hidden">
+            <div class="booking-calendar-eyebrow">Booking Destination</div>
+            <div id="booking-calendar-name" class="booking-calendar-name"></div>
+            <div class="booking-calendar-copy">Confirmed bookings are posted to this calendar and the invite is sent from there.</div>
           </div>
 
           <nav class="week-nav">
@@ -233,6 +240,8 @@
         </div>
 
         <input type="hidden" id="selected-slot" name="selected_slot">
+        <input type="hidden" id="selected-hold-id" name="provisional_hold_id">
+        <input type="hidden" id="booking-session-id" name="booking_session_id">
 
         <button type="submit" id="submit-btn" class="btn btn-primary">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
