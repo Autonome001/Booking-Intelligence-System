@@ -264,10 +264,6 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       endDate,
       durationMinutes,
       maxSlots: config.maxSlots,
-      workingHours: {
-        start: '09:00',
-        end: '17:00',
-      },
       bufferMinutes: 0,
       slotIntervalMinutes: config.slotIntervalMinutes,
     });
@@ -367,10 +363,6 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
         endDate,
         durationMinutes,
         maxSlots: 24,
-        workingHours: {
-          start: '09:00',
-          end: '17:00',
-        },
         bufferMinutes: 0,
         slotIntervalMinutes: config.slotIntervalMinutes,
       });

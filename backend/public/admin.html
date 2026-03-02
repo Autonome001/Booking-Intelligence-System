@@ -198,6 +198,25 @@
         <p style="color: var(--gray-600); margin-bottom: 1.5rem;">Define your standard working hours for each day of the week. Bookings will only be offered during these times.</p>
 
         <form id="working-hours-form">
+          <div style="display: grid; grid-template-columns: minmax(220px, 320px); gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+              <label class="form-label" for="working-hours-timezone">Working Hours Timezone</label>
+              <select id="working-hours-timezone" class="form-input">
+                <option value="America/New_York">Eastern Time (America/New_York)</option>
+                <option value="America/Chicago">Central Time (America/Chicago)</option>
+                <option value="America/Denver">Mountain Time (America/Denver)</option>
+                <option value="America/Los_Angeles">Pacific Time (America/Los_Angeles)</option>
+                <option value="America/Phoenix">Arizona Time (America/Phoenix)</option>
+                <option value="America/Anchorage">Alaska Time (America/Anchorage)</option>
+                <option value="Pacific/Honolulu">Hawaii Time (Pacific/Honolulu)</option>
+                <option value="UTC">UTC</option>
+              </select>
+              <p class="text-small text-muted" style="margin-top: 0.5rem;">
+                All working-hour windows below will be interpreted in this timezone.
+              </p>
+            </div>
+          </div>
+
           <div id="working-hours-grid">
             <div class="text-center text-muted">
               <div class="loading-spinner" style="margin: 2rem auto;"></div>
