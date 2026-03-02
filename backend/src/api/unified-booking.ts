@@ -344,12 +344,12 @@ async function sendBookingCustomerEmail(
       start?: string;
     }
     | null
-): Promise<void> {
+): Promise<{ accepted: boolean; messageId: string | null }> {
   const emailService = await serviceManager.getService<Resend>('email');
 
   if (!emailService) {
     logger.warn(`Confirmation email skipped for ${bookingId}: email service not available`);
-    return;
+    return { accepted: false, messageId: null };
   }
 
   const emailConfig = getServiceConfig('email');
@@ -391,13 +391,29 @@ async function sendBookingCustomerEmail(
       'The Autonome Team',
     ].join('\n');
 
-  await emailService.emails.send({
+  const sendResult = await emailService.emails.send({
     from: emailConfig.fromAddress,
     to: [bookingData.email],
     subject,
     text: body,
     replyTo: emailConfig.fromAddress,
   });
+
+  const messageId =
+    ((sendResult as unknown as { data?: { id?: string }; id?: string })?.data?.id)
+    || ((sendResult as unknown as { data?: { id?: string }; id?: string })?.id)
+    || null;
+
+  logger.info(`Customer confirmation email accepted for ${bookingId}`, {
+    messageId,
+    recipient: bookingData.email,
+    calendarConfirmed: isCalendarConfirmed,
+  });
+
+  return {
+    accepted: true,
+    messageId,
+  };
 }
 
 async function requiresConfirmedCalendarBooking(): Promise<boolean> {
@@ -462,6 +478,13 @@ async function confirmCalendarBooking(
       logger.warn(`Calendar event confirmed but booking row update failed for ${bookingId}:`, error);
     }
   }
+
+  logger.info(`Calendar booking confirmed for ${bookingId}`, {
+    calendarEmail: confirmed.calendarEmail,
+    eventId: confirmed.event.id,
+    start: confirmed.event.start.toISOString(),
+    end: confirmed.event.end.toISOString(),
+  });
 
   return {
     confirmed: true,
@@ -792,8 +815,13 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
 
     if ((result as { success?: boolean }).success) {
       try {
-        await sendBookingCustomerEmail(req.body as BookingData, requestId, calendarConfirmation);
-        (result as Record<string, unknown>)['confirmation_email_sent'] = true;
+        const emailReceipt = await sendBookingCustomerEmail(
+          req.body as BookingData,
+          requestId,
+          calendarConfirmation
+        );
+        (result as Record<string, unknown>)['confirmation_email_sent'] = emailReceipt.accepted;
+        (result as Record<string, unknown>)['confirmation_email_id'] = emailReceipt.messageId;
       } catch (error) {
         const emailError = error instanceof Error ? error.message : 'Unknown error';
         logger.error(`Customer confirmation email failed for ${requestId}: ${emailError}`);

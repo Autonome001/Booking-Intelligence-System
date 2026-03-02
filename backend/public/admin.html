@@ -139,10 +139,34 @@
             <button type="button" class="admin-preset-button" data-days="60">2 Months</button>
           </div>
 
+          <div class="admin-settings-grid" style="margin-bottom: 1rem; align-items: end;">
+            <div>
+              <label class="form-label" for="minimum-notice-minutes">Booking Buffer (Minimum Notice)</label>
+              <input
+                type="number"
+                id="minimum-notice-minutes"
+                class="form-input"
+                min="0"
+                max="1440"
+                step="5"
+                value="30"
+              >
+              <p id="minimum-notice-summary" class="admin-settings-summary" style="margin-top: 0.5rem;">
+                Customers must book at least 30 minutes in advance.
+              </p>
+            </div>
+            <div class="admin-preset-row" style="justify-content: flex-start; margin-bottom: 0;">
+              <button type="button" class="admin-preset-button" data-notice="0">No Buffer</button>
+              <button type="button" class="admin-preset-button" data-notice="15">15 Min</button>
+              <button type="button" class="admin-preset-button" data-notice="30">30 Min</button>
+              <button type="button" class="admin-preset-button" data-notice="60">1 Hour</button>
+            </div>
+          </div>
+
           <div class="admin-settings-grid">
             <div class="admin-setting-copy">
               <label class="form-label" for="ai-concierge-enabled">AI Booking Concierge</label>
-              <p id="display-settings-summary" class="admin-settings-summary">Customers can browse the next 20 days of availability.</p>
+              <p id="display-settings-summary" class="admin-settings-summary">Customers can browse the next 20 days of availability and must book at least 30 minutes ahead.</p>
             </div>
             <label class="admin-toggle-switch" for="ai-concierge-enabled">
               <input type="checkbox" id="ai-concierge-enabled" checked>

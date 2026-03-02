@@ -217,6 +217,12 @@ async function selectSlot(slot) {
     selectedSlot = null;
     selectedHoldId = null;
     syncSelectedSlotUI();
+    if (
+      typeof error?.message === 'string' &&
+      (error.message.includes('no longer available') || error.message.includes('at least'))
+    ) {
+      fetchAvailability(currentWeekOffset);
+    }
     showErrorMessage(error.message || 'We could not reserve that slot. Please try another time.');
   } finally {
     isSlotSelectionPending = false;

@@ -551,6 +551,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
   ): TimeSlot[] {
     const availableSlots: TimeSlot[] = [];
     const durationMs = options.durationMinutes * 60 * 1000;
+    const intervalMs = (options.slotIntervalMinutes || 60) * 60 * 1000;
     // Default working hours: 9 AM - 5 PM
     const workStart = options.workingHours?.start || '09:00';
     const workEnd = options.workingHours?.end || '17:00';
@@ -563,6 +564,14 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       const dayEnd = this.setTimeOfDay(new Date(currentDate), workEnd);
 
       let slotStart = new Date(dayStart);
+      if (startDate > dayStart && startDate < dayEnd) {
+        const elapsedSinceWorkStart = startDate.getTime() - dayStart.getTime();
+        const nextSlotBoundary = Math.ceil(elapsedSinceWorkStart / intervalMs) * intervalMs;
+        slotStart = new Date(dayStart.getTime() + nextSlotBoundary);
+      } else if (startDate >= dayEnd) {
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
 
       while (slotStart < dayEnd) {
         const slotEnd = new Date(slotStart.getTime() + durationMs);
@@ -585,7 +594,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
         // Move to next slot start using a fixed interval (e.g., 60 minutes)
         // This ensures slots start at predictable times (9:00, 10:00, etc.)
-        const intervalMs = (options.slotIntervalMinutes || 60) * 60 * 1000;
         slotStart = new Date(slotStart.getTime() + intervalMs);
       }
 

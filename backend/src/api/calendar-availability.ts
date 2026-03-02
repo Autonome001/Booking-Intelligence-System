@@ -18,6 +18,8 @@ import {
   saveAvailabilityDisplaySettings,
   MAX_DISPLAY_DAYS,
   MIN_DISPLAY_DAYS,
+  MAX_MINIMUM_NOTICE_MINUTES,
+  MIN_MINIMUM_NOTICE_MINUTES,
 } from '../services/calendar/availabilityDisplaySettings.js';
 
 const router = Router();
@@ -474,18 +476,18 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const now = new Date();
-    const minStart = new Date(now.getTime() + config.minLeadTimeMinutes * 60 * 1000);
-    const requestedStart = req.query['start']
-      ? new Date(req.query['start'] as string)
-      : minStart;
-    const startDate = requestedStart < minStart ? minStart : requestedStart;
-
     const schedulingWindowDays = Math.max(1, Math.ceil(getBookingWindowHours(durationMinutes) / 24));
     const { settings: displaySettings } = await getDisplaySettingsForUser(
       userEmail,
       Math.min(config.defaultBookingWindowDays, schedulingWindowDays)
     );
+    const now = new Date();
+    const minimumNoticeMinutes = displaySettings.minimumNoticeMinutes ?? config.minLeadTimeMinutes;
+    const minStart = new Date(now.getTime() + minimumNoticeMinutes * 60 * 1000);
+    const requestedStart = req.query['start']
+      ? new Date(req.query['start'] as string)
+      : minStart;
+    const startDate = requestedStart < minStart ? minStart : requestedStart;
     const displayWindowDays = Math.min(displaySettings.displayWindowDays, schedulingWindowDays);
     const requestedDays = Math.max(1, parseInt(req.query['days'] as string) || 7);
     const displayWindowEnd = new Date(now.getTime() + displayWindowDays * 24 * 60 * 60 * 1000);
@@ -497,7 +499,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
         rules: {
           duration_minutes: durationMinutes,
           display_window_days: displayWindowDays,
-          lead_time_minutes: config.minLeadTimeMinutes,
+          lead_time_minutes: minimumNoticeMinutes,
           max_slots: config.maxSlots,
         },
         timestamp: new Date().toISOString(),
@@ -531,7 +533,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       rules: {
         duration_minutes: durationMinutes,
         display_window_days: displayWindowDays,
-        lead_time_minutes: config.minLeadTimeMinutes,
+        lead_time_minutes: minimumNoticeMinutes,
         max_slots: config.maxSlots,
       },
       timestamp: new Date().toISOString(),
@@ -598,7 +600,8 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
 
     if (calendarService) {
       const now = new Date();
-      const minStart = new Date(now.getTime() + config.minLeadTimeMinutes * 60 * 1000);
+      const minimumNoticeMinutes = displaySettings.minimumNoticeMinutes ?? config.minLeadTimeMinutes;
+      const minStart = new Date(now.getTime() + minimumNoticeMinutes * 60 * 1000);
       const chatSearchWindowDays = Math.min(
         MAX_DISPLAY_DAYS,
         Math.max(displaySettings.displayWindowDays, DEFAULT_CHAT_SEARCH_WINDOW_DAYS)
@@ -695,7 +698,7 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
 router.post('/holds/selection', async (req: Request, res: Response): Promise<void> => {
   try {
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
-    const { session_id, slot_start, slot_end, expiration_minutes } = req.body ?? {};
+    const { session_id, slot_start, slot_end, expiration_minutes, user_email } = req.body ?? {};
 
     if (!calendarService) {
       res.status(503).json({
@@ -720,6 +723,25 @@ router.post('/holds/selection', async (req: Request, res: Response): Promise<voi
       res.status(400).json({
         success: false,
         error: 'A valid slot_start and slot_end are required',
+      });
+      return;
+    }
+
+    const config = getSchedulingConfig();
+    const userEmail = resolveUserEmail(user_email);
+    const { settings: displaySettings } = await getDisplaySettingsForUser(
+      userEmail,
+      config.defaultBookingWindowDays
+    );
+    const minimumNoticeMinutes = displaySettings.minimumNoticeMinutes ?? config.minLeadTimeMinutes;
+    const earliestBookableStart = new Date(
+      Date.now() + minimumNoticeMinutes * 60 * 1000
+    );
+
+    if (start < earliestBookableStart) {
+      res.status(409).json({
+        success: false,
+        error: `This time is no longer available because bookings require at least ${minimumNoticeMinutes} minutes of notice. Please choose a later slot.`,
       });
       return;
     }
@@ -807,6 +829,7 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
       : 'Availability sent via email after booking submission',
     display_window_days: displaySettings.displayWindowDays,
     ai_concierge_enabled: displaySettings.aiConciergeEnabled,
+    minimum_notice_minutes: displaySettings.minimumNoticeMinutes,
   });
 });
 
@@ -831,6 +854,8 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
       limits: {
         min_display_days: MIN_DISPLAY_DAYS,
         max_display_days: MAX_DISPLAY_DAYS,
+        min_minimum_notice_minutes: MIN_MINIMUM_NOTICE_MINUTES,
+        max_minimum_notice_minutes: MAX_MINIMUM_NOTICE_MINUTES,
       },
     });
   } catch (error) {
@@ -850,7 +875,7 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
 router.put('/preferences', async (req: Request, res: Response): Promise<void> => {
   try {
     const config = getSchedulingConfig();
-    const { user_email, display_window_days, ai_concierge_enabled } = req.body ?? {};
+    const { user_email, display_window_days, ai_concierge_enabled, minimum_notice_minutes } = req.body ?? {};
     const userEmail = resolveUserEmail(user_email);
 
     if (
@@ -866,6 +891,19 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    if (
+      minimum_notice_minutes !== undefined &&
+      (!Number.isInteger(minimum_notice_minutes) ||
+        minimum_notice_minutes < MIN_MINIMUM_NOTICE_MINUTES ||
+        minimum_notice_minutes > MAX_MINIMUM_NOTICE_MINUTES)
+    ) {
+      res.status(400).json({
+        success: false,
+        error: `minimum_notice_minutes must be an integer between ${MIN_MINIMUM_NOTICE_MINUTES} and ${MAX_MINIMUM_NOTICE_MINUTES}`,
+      });
+      return;
+    }
+
     const supabase = await serviceManager.getService<SupabaseClient>('supabase');
     const settings = await saveAvailabilityDisplaySettings(
       supabase,
@@ -874,6 +912,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         displayWindowDays: display_window_days,
         aiConciergeEnabled:
           typeof ai_concierge_enabled === 'boolean' ? ai_concierge_enabled : undefined,
+        minimumNoticeMinutes:
+          Number.isInteger(minimum_notice_minutes) ? minimum_notice_minutes : undefined,
       },
       config.defaultBookingWindowDays,
       {

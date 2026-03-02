@@ -498,16 +498,25 @@ function escapeHtml(value) {
 // ============================================
 // BOOKING DISPLAY SETTINGS
 // ============================================
-function updateDisplayWindowPreview(days) {
+function updateDisplayWindowPreview(days, minimumNoticeMinutes = document.getElementById('minimum-notice-minutes')?.value) {
   const normalizedDays = Math.max(7, Math.min(60, parseInt(days, 10) || 20));
+  const normalizedNoticeMinutes = Math.max(0, Math.min(1440, parseInt(minimumNoticeMinutes, 10) || 30));
   const daysValue = document.getElementById('display-window-days-value');
   const summary = document.getElementById('display-settings-summary');
+  const noticeSummary = document.getElementById('minimum-notice-summary');
 
   daysValue.textContent = normalizedDays;
-  summary.textContent = `Customers can browse the next ${normalizedDays} day${normalizedDays === 1 ? '' : 's'} of availability before the calendar stops offering later dates.`;
+  summary.textContent = `Customers can browse the next ${normalizedDays} day${normalizedDays === 1 ? '' : 's'} of availability and must book at least ${normalizedNoticeMinutes} minute${normalizedNoticeMinutes === 1 ? '' : 's'} ahead.`;
+  noticeSummary.textContent = normalizedNoticeMinutes === 0
+    ? 'Customers can book any currently open slot, including immediate same-day availability.'
+    : `Customers must book at least ${normalizedNoticeMinutes} minute${normalizedNoticeMinutes === 1 ? '' : 's'} in advance.`;
 
   document.querySelectorAll('.admin-preset-button[data-days]').forEach((button) => {
     button.classList.toggle('active', parseInt(button.dataset.days, 10) === normalizedDays);
+  });
+
+  document.querySelectorAll('.admin-preset-button[data-notice]').forEach((button) => {
+    button.classList.toggle('active', parseInt(button.dataset.notice, 10) === normalizedNoticeMinutes);
   });
 }
 
@@ -524,10 +533,12 @@ async function loadDisplaySettings() {
     const settings = data.settings || {};
     const rangeInput = document.getElementById('display-window-days');
     const aiToggle = document.getElementById('ai-concierge-enabled');
+    const minimumNoticeInput = document.getElementById('minimum-notice-minutes');
 
     rangeInput.value = settings.displayWindowDays || 20;
     aiToggle.checked = settings.aiConciergeEnabled !== false;
-    updateDisplayWindowPreview(rangeInput.value);
+    minimumNoticeInput.value = settings.minimumNoticeMinutes ?? 30;
+    updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
   } catch (error) {
     console.error('Failed to load display settings:', error);
     showNotification('error', 'Failed to load booking display settings');
@@ -537,15 +548,27 @@ async function loadDisplaySettings() {
 function setupDisplaySettingsForm() {
   const form = document.getElementById('display-settings-form');
   const rangeInput = document.getElementById('display-window-days');
+  const minimumNoticeInput = document.getElementById('minimum-notice-minutes');
 
   rangeInput.addEventListener('input', () => {
-    updateDisplayWindowPreview(rangeInput.value);
+    updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
+  });
+
+  minimumNoticeInput.addEventListener('input', () => {
+    updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
   });
 
   document.querySelectorAll('.admin-preset-button[data-days]').forEach((button) => {
     button.addEventListener('click', () => {
       rangeInput.value = button.dataset.days;
-      updateDisplayWindowPreview(rangeInput.value);
+      updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
+    });
+  });
+
+  document.querySelectorAll('.admin-preset-button[data-notice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      minimumNoticeInput.value = button.dataset.notice;
+      updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
     });
   });
 
@@ -558,6 +581,7 @@ async function saveDisplaySettings(event) {
   const saveButton = document.getElementById('save-display-settings-btn');
   const displayWindowDays = parseInt(document.getElementById('display-window-days').value, 10);
   const aiConciergeEnabled = document.getElementById('ai-concierge-enabled').checked;
+  const minimumNoticeMinutes = parseInt(document.getElementById('minimum-notice-minutes').value, 10);
 
   setButtonLoading(saveButton, true, 'Saving...');
 
@@ -569,6 +593,7 @@ async function saveDisplaySettings(event) {
         user_email: USER_EMAIL,
         display_window_days: displayWindowDays,
         ai_concierge_enabled: aiConciergeEnabled,
+        minimum_notice_minutes: minimumNoticeMinutes,
       }),
     });
 
@@ -578,7 +603,10 @@ async function saveDisplaySettings(event) {
       throw new Error(result.error || 'Failed to save booking display settings');
     }
 
-    updateDisplayWindowPreview(result.settings?.displayWindowDays || displayWindowDays);
+    updateDisplayWindowPreview(
+      result.settings?.displayWindowDays || displayWindowDays,
+      result.settings?.minimumNoticeMinutes ?? minimumNoticeMinutes
+    );
     showNotification('success', 'Booking display settings saved');
   } catch (error) {
     console.error('Failed to save display settings:', error);

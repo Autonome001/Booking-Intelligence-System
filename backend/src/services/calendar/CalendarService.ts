@@ -250,7 +250,8 @@ export class CalendarService {
     // Apply availability controls: blackouts and working hours
     const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
     const filteredByBlackouts = await this.filterByBlackouts(intersectedSlots, userEmail, options.startDate, options.endDate);
-    const finalSlots = await this.filterByWorkingHours(filteredByBlackouts, userEmail);
+    const filteredByWorkingHours = await this.filterByWorkingHours(filteredByBlackouts, userEmail);
+    const finalSlots = filteredByWorkingHours.filter((slot) => slot.start >= options.startDate);
 
     // Cache the result
     this.cacheAvailability(cacheKey, finalSlots);
@@ -418,6 +419,16 @@ export class CalendarService {
       return;
     }
 
+    const metadata = dbHold.metadata as Record<string, unknown> | null;
+    const isSelectionHold =
+      metadata?.['type'] === 'selection_hold'
+      || typeof metadata?.['provider_hold_id'] === 'string';
+
+    if (isSelectionHold) {
+      await this.releaseSelectionHold(holdId);
+      return;
+    }
+
     const holdIds = (dbHold.metadata as { holds: string[] }).holds;
 
     console.log(`Releasing ${holdIds.length} provisional hold(s)...`);
@@ -544,15 +555,49 @@ export class CalendarService {
       `selection_${sessionId}`,
       expirationMinutes
     );
+    const persistencePayload = {
+      booking_inquiry_id: null,
+      calendar_account_id: this.bookingProviderId,
+      calendar_email: provider.calendarEmail,
+      slot_start: hold.slotStart.toISOString(),
+      slot_end: hold.slotEnd.toISOString(),
+      expires_at: hold.expiresAt.toISOString(),
+      status: 'active',
+      metadata: {
+        type: 'selection_hold',
+        session_id: sessionId,
+        provider_hold_id: hold.id,
+      },
+    };
+    const { data: persistedHold, error: persistenceError } = await this.supabase
+      .from('provisional_holds')
+      .insert(persistencePayload)
+      .select('id, expires_at')
+      .single<{ id: string; expires_at: string }>();
 
-    this.selectionHoldBySession.set(sessionId, hold.id);
-    this.scheduleSelectionHoldExpiry(hold.id, sessionId, hold.expiresAt);
+    if (persistenceError || !persistedHold) {
+      try {
+        await provider.releaseProvisionalHold(hold.id);
+      } catch (releaseError) {
+        console.warn(`Failed to release unpersisted selection hold ${hold.id}:`, releaseError);
+      }
+
+      throw new Error(
+        `Failed to persist the selected booking slot: ${persistenceError?.message || 'Unknown database error'}`
+      );
+    }
+
+    const publicHoldId = persistedHold.id;
+    const expiresAt = new Date(persistedHold.expires_at || hold.expiresAt.toISOString());
+
+    this.selectionHoldBySession.set(sessionId, publicHoldId);
+    this.scheduleSelectionHoldExpiry(publicHoldId, sessionId, expiresAt);
     this.clearAvailabilityCache();
 
     return {
-      holdId: hold.id,
+      holdId: publicHoldId,
       calendarEmail: provider.calendarEmail,
-      expiresAt: hold.expiresAt,
+      expiresAt,
     };
   }
 
@@ -563,8 +608,72 @@ export class CalendarService {
     holdId: string,
     eventDetails: Partial<CalendarEvent>
   ): Promise<{ event: CalendarEvent; calendarEmail: string }> {
-    const provider = this.getProviderForHoldOrThrow(holdId);
-    const event = await provider.confirmProvisionalHold(holdId, eventDetails);
+    if (holdId.includes(':')) {
+      const provider = this.getProviderForHoldOrThrow(holdId);
+      const event = await provider.confirmProvisionalHold(holdId, eventDetails);
+
+      this.removeSelectionHoldReferences(holdId);
+      this.clearAvailabilityCache();
+
+      return {
+        event,
+        calendarEmail: provider.calendarEmail,
+      };
+    }
+
+    const { data: persistedHold, error } = await this.supabase
+      .from('provisional_holds')
+      .select('*')
+      .eq('id', holdId)
+      .single<Record<string, unknown>>();
+
+    if (error || !persistedHold) {
+      throw new Error(`Selection hold ${holdId} not found`);
+    }
+
+    const status = typeof persistedHold['status'] === 'string' ? persistedHold['status'] : 'active';
+    const metadata = persistedHold['metadata'] as Record<string, unknown> | null;
+    const providerHoldId =
+      typeof metadata?.['provider_hold_id'] === 'string' ? metadata['provider_hold_id'] : '';
+
+    if (!providerHoldId) {
+      throw new Error(`Selection hold ${holdId} is missing provider metadata`);
+    }
+
+    const providerId =
+      typeof persistedHold['calendar_account_id'] === 'string'
+        ? persistedHold['calendar_account_id']
+        : providerHoldId.split(':')[0];
+    const provider = providerId ? this.providers.get(providerId) : undefined;
+
+    if (!provider) {
+      throw new Error(`Booking calendar provider ${providerId || 'unknown'} is not available`);
+    }
+
+    if (status === 'confirmed' && typeof persistedHold['confirmed_event_id'] === 'string') {
+      const existingEvent = await provider.getEvent(persistedHold['confirmed_event_id']);
+      this.removeSelectionHoldReferences(holdId);
+      this.clearAvailabilityCache();
+
+      return {
+        event: existingEvent,
+        calendarEmail: provider.calendarEmail,
+      };
+    }
+
+    if (status !== 'active') {
+      throw new Error(`Selection hold ${holdId} is no longer active`);
+    }
+
+    const event = await provider.confirmProvisionalHold(providerHoldId, eventDetails);
+
+    await this.supabase
+      .from('provisional_holds')
+      .update({
+        status: 'confirmed',
+        confirmed_event_id: event.id,
+      })
+      .eq('id', holdId);
 
     this.removeSelectionHoldReferences(holdId);
     this.clearAvailabilityCache();
@@ -579,8 +688,53 @@ export class CalendarService {
    * Release a customer-selected provisional hold.
    */
   async releaseSelectionHold(holdId: string): Promise<void> {
-    const provider = this.getProviderForHoldOrThrow(holdId);
-    await provider.releaseProvisionalHold(holdId);
+    if (holdId.includes(':')) {
+      const provider = this.getProviderForHoldOrThrow(holdId);
+      await provider.releaseProvisionalHold(holdId);
+
+      this.removeSelectionHoldReferences(holdId);
+      this.clearAvailabilityCache();
+      return;
+    }
+
+    const { data: persistedHold, error } = await this.supabase
+      .from('provisional_holds')
+      .select('*')
+      .eq('id', holdId)
+      .single<Record<string, unknown>>();
+
+    if (error || !persistedHold) {
+      throw new Error(`Selection hold ${holdId} not found`);
+    }
+
+    const status = typeof persistedHold['status'] === 'string' ? persistedHold['status'] : 'active';
+    if (status === 'released' || status === 'expired' || status === 'confirmed') {
+      this.removeSelectionHoldReferences(holdId);
+      this.clearAvailabilityCache();
+      return;
+    }
+
+    const metadata = persistedHold['metadata'] as Record<string, unknown> | null;
+    const providerHoldId =
+      typeof metadata?.['provider_hold_id'] === 'string' ? metadata['provider_hold_id'] : '';
+    const providerId =
+      typeof persistedHold['calendar_account_id'] === 'string'
+        ? persistedHold['calendar_account_id']
+        : providerHoldId.split(':')[0];
+    const provider = providerId ? this.providers.get(providerId) : undefined;
+
+    if (!provider || !providerHoldId) {
+      throw new Error(`Booking calendar provider ${providerId || 'unknown'} is not available`);
+    }
+
+    await provider.releaseProvisionalHold(providerHoldId);
+    await this.supabase
+      .from('provisional_holds')
+      .update({
+        status: 'released',
+        released_at: new Date().toISOString(),
+      })
+      .eq('id', holdId);
 
     this.removeSelectionHoldReferences(holdId);
     this.clearAvailabilityCache();
@@ -727,12 +881,51 @@ export class CalendarService {
       }
 
       try {
-        const provider = this.getProviderForHoldOrThrow(holdId);
-        await provider.releaseProvisionalHold(holdId);
+        if (holdId.includes(':')) {
+          const provider = this.getProviderForHoldOrThrow(holdId);
+          await provider.releaseProvisionalHold(holdId);
+        } else {
+          const { data: persistedHold, error } = await this.supabase
+            .from('provisional_holds')
+            .select('*')
+            .eq('id', holdId)
+            .single<Record<string, unknown>>();
+
+          if (!error && persistedHold) {
+            const status =
+              typeof persistedHold['status'] === 'string' ? persistedHold['status'] : 'active';
+
+            if (status === 'active') {
+              const metadata = persistedHold['metadata'] as Record<string, unknown> | null;
+              const providerHoldId =
+                typeof metadata?.['provider_hold_id'] === 'string'
+                  ? metadata['provider_hold_id']
+                  : '';
+              const providerId =
+                typeof persistedHold['calendar_account_id'] === 'string'
+                  ? persistedHold['calendar_account_id']
+                  : providerHoldId.split(':')[0];
+              const provider = providerId ? this.providers.get(providerId) : undefined;
+
+              if (provider && providerHoldId) {
+                await provider.releaseProvisionalHold(providerHoldId);
+              }
+
+              await this.supabase
+                .from('provisional_holds')
+                .update({
+                  status: 'expired',
+                  released_at: new Date().toISOString(),
+                })
+                .eq('id', holdId);
+            }
+          }
+        }
       } catch (error) {
         console.warn(`Failed to release expired selection hold ${holdId}:`, error);
       } finally {
         this.removeSelectionHoldReferences(holdId);
+        this.clearAvailabilityCache();
       }
     }, msUntilExpiry);
 
