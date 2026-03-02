@@ -54,6 +54,32 @@
         <p id="calendar-warning" class="admin-inline-note hidden"></p>
       </div>
 
+      <div id="booking-destination-panel" class="admin-settings-panel hidden" style="margin-bottom: 1.5rem;">
+        <div class="admin-settings-header">
+          <div>
+            <h4>Booking Destination Calendar</h4>
+            <p>Select which connected calendar receives confirmed consultations and sends the customer invite.</p>
+          </div>
+        </div>
+
+        <div class="admin-settings-grid" style="align-items: end;">
+          <div>
+            <label class="form-label" for="booking-destination-select">Calendar</label>
+            <select id="booking-destination-select" class="form-input"></select>
+          </div>
+          <div>
+            <button type="button" id="save-booking-destination-btn" class="btn btn-primary">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span>Save Booking Destination</span>
+            </button>
+          </div>
+        </div>
+
+        <p id="booking-destination-summary" class="admin-settings-summary" style="margin-top: 1rem;"></p>
+      </div>
+
       <!-- Calendars Container -->
       <div id="calendars-container">
         <div class="text-center text-muted">

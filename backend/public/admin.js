@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSystemStatus();
   await loadCalendars();
   setupConnectButton();
+  setupBookingDestinationControls();
   setupAvailabilityTabs();
   setupDisplaySettingsForm();
   setupNotificationSettingsForm();
@@ -108,6 +109,7 @@ async function loadCalendars() {
 
     const data = await response.json();
     connectedCalendars = data.calendars || [];
+    renderBookingDestinationSelector();
 
     if (warningDisplay) {
       if (data.warning) {
@@ -147,6 +149,7 @@ async function loadCalendars() {
 
     // Render calendar cards
     if (connectedCalendars.length === 0) {
+      renderBookingDestinationSelector();
       container.innerHTML = `
         <div class="text-center text-muted" style="padding: 3rem;">
           <svg class="icon-xl" style="margin: 0 auto 1rem; opacity: 0.5;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,6 +195,75 @@ function renderCalendarCards(calendars) {
       const card = createCalendarCard(calendar);
       container.appendChild(card);
     });
+}
+
+function renderBookingDestinationSelector() {
+  const panel = document.getElementById('booking-destination-panel');
+  const select = document.getElementById('booking-destination-select');
+  const summary = document.getElementById('booking-destination-summary');
+  const saveButton = document.getElementById('save-booking-destination-btn');
+
+  if (!panel || !select || !summary || !saveButton) {
+    return;
+  }
+
+  if (!connectedCalendars.length) {
+    panel.classList.add('hidden');
+    select.innerHTML = '';
+    summary.textContent = '';
+    saveButton.disabled = true;
+    return;
+  }
+
+  panel.classList.remove('hidden');
+
+  const sortedCalendars = [...connectedCalendars]
+    .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || a.priority - b.priority);
+
+  select.innerHTML = sortedCalendars.map((calendar) => `
+    <option value="${calendar.id}" ${calendar.is_primary ? 'selected' : ''}>
+      ${calendar.calendar_email}${calendar.is_primary ? ' (Current Booking Destination)' : ''}
+    </option>
+  `).join('');
+
+  const activeSelection = sortedCalendars.find((calendar) => calendar.is_primary) || sortedCalendars[0];
+  updateBookingDestinationSummary(activeSelection.calendar_email);
+  saveButton.disabled = false;
+}
+
+function updateBookingDestinationSummary(calendarEmail) {
+  const summary = document.getElementById('booking-destination-summary');
+  if (!summary) {
+    return;
+  }
+
+  summary.textContent = `Confirmed consultations currently post to ${calendarEmail}. Availability is still checked across all connected active calendars.`;
+}
+
+function setupBookingDestinationControls() {
+  const saveButton = document.getElementById('save-booking-destination-btn');
+  const select = document.getElementById('booking-destination-select');
+
+  if (!saveButton || !select) {
+    return;
+  }
+
+  select.addEventListener('change', () => {
+    const selectedCalendar = connectedCalendars.find((calendar) => calendar.id === select.value);
+    if (selectedCalendar?.calendar_email) {
+      updateBookingDestinationSummary(selectedCalendar.calendar_email);
+    }
+  });
+
+  saveButton.addEventListener('click', async () => {
+    if (!select.value) {
+      showNotification('error', 'Select a booking destination calendar first');
+      return;
+    }
+
+    const selectedCalendar = connectedCalendars.find((calendar) => calendar.id === select.value);
+    await setPrimaryCalendar(select.value, selectedCalendar?.calendar_email || 'Selected calendar', saveButton);
+  });
 }
 
 function createCalendarCard(calendar) {
@@ -298,8 +370,10 @@ function connectCalendar() {
   window.location.href = authUrl;
 }
 
-async function setPrimaryCalendar(calendarId, calendarEmail) {
+async function setPrimaryCalendar(calendarId, calendarEmail, triggerButton = null) {
   try {
+    setButtonLoading(triggerButton, true, 'Saving...');
+
     const response = await fetch(`/api/calendar/oauth/accounts/${calendarId}/primary`, {
       method: 'PUT',
     });
@@ -316,6 +390,8 @@ async function setPrimaryCalendar(calendarId, calendarEmail) {
   } catch (error) {
     console.error('Failed to set primary calendar:', error);
     showNotification('error', error.message || 'Failed to update the booking destination calendar');
+  } finally {
+    setButtonLoading(triggerButton, false);
   }
 }
 
