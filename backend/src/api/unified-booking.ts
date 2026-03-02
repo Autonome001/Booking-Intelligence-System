@@ -366,6 +366,23 @@ async function processEmergencyMode(
     const { data: _data, error } = await supabase.from('booking_inquiries').insert([bookingRecord]);
 
     if (error) {
+      const isDuplicateBookingRecord =
+        error.code === '23505' &&
+        (error.message.includes('booking_inquiries_processing_id_key') ||
+          error.message.includes('booking_inquiries_form_submission_id_key'));
+
+      if (isDuplicateBookingRecord) {
+        logger.info(`Emergency mode booking already exists after duplicate insert attempt: ${requestId}`);
+
+        return {
+          success: true,
+          booking_id: requestId,
+          status: 'stored_for_manual_processing',
+          processing_mode: ProcessingMode.EMERGENCY as any,
+          message: 'Your booking request has been stored and will be processed manually.',
+        } as EmergencyResult;
+      }
+
       logger.error(`Database insert failed for ${requestId}:`, {
         errorCode: error.code,
         errorMessage: error.message,
