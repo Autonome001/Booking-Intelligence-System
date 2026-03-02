@@ -11,6 +11,7 @@ let isBookingChatLoading = false;
 let bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 let selectedHoldId = null;
 let isSlotSelectionPending = false;
+const AVAILABILITY_REFRESH_STORAGE_KEY = 'autonome_availability_refresh';
 
 // ============================================
 // INITIALIZATION
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupFormSubmission();
   setupWeekNavigation();
   setupBookingChat();
+  setupAvailabilityAutoRefresh();
   await checkAvailabilityFeatureFlag();
 });
 
@@ -50,7 +52,9 @@ function setSubmitButtonPending(isPending) {
 // ============================================
 async function checkAvailabilityFeatureFlag() {
   try {
-    const response = await fetch('/api/calendar/config/show-slots');
+    const response = await fetch('/api/calendar/config/show-slots', {
+      cache: 'no-store',
+    });
     const data = await response.json();
 
     maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
@@ -91,7 +95,9 @@ async function fetchAvailability(weekOffset) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + (weekOffset * 7));
 
-    const response = await fetch(`/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`);
+    const response = await fetch(`/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`, {
+      cache: 'no-store',
+    });
     const data = await response.json();
 
     const weekEnd = new Date(startDate);
@@ -544,6 +550,33 @@ function buildBookingChatTranscript() {
   return turns
     .map((message) => `${message.role === 'assistant' ? 'Autonome Concierge' : 'Customer'}: ${message.content}`)
     .join('\n');
+}
+
+function refreshAvailabilityFromAdminUpdate() {
+  if (!availabilitySlotsEnabled) {
+    checkAvailabilityFeatureFlag();
+    return;
+  }
+
+  fetchAvailability(currentWeekOffset);
+}
+
+function setupAvailabilityAutoRefresh() {
+  window.addEventListener('storage', (event) => {
+    if (event.key === AVAILABILITY_REFRESH_STORAGE_KEY && event.newValue) {
+      refreshAvailabilityFromAdminUpdate();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkAvailabilityFeatureFlag();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    checkAvailabilityFeatureFlag();
+  });
 }
 
 function setupFormSubmission() {

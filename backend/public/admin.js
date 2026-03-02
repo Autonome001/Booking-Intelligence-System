@@ -3,6 +3,7 @@
 // ============================================
 const DEFAULT_ADMIN_USER_EMAIL = 'dev@autonome.us';
 const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
+const AVAILABILITY_REFRESH_STORAGE_KEY = 'autonome_availability_refresh';
 const USER_EMAIL = resolveAdminUserEmail();
 let connectedCalendars = [];
 const MAX_CALENDARS = 7;
@@ -388,6 +389,7 @@ async function setPrimaryCalendar(calendarId, calendarEmail, triggerButton = nul
       throw new Error(result.error || 'Failed to update the booking destination calendar');
     }
 
+    broadcastAvailabilityRefresh('booking_destination_updated');
     showNotification('success', `${calendarEmail} is now the booking destination calendar`);
     await loadCalendars();
     await loadSystemStatus();
@@ -415,6 +417,7 @@ async function disconnectCalendar(calendarId, calendarEmail) {
     const result = await response.json();
 
     if (result.success) {
+      broadcastAvailabilityRefresh('calendar_disconnected');
       showNotification('success', `Calendar "${calendarEmail}" disconnected successfully`);
 
       // Reload calendars and system status
@@ -495,12 +498,32 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function broadcastAvailabilityRefresh(reason = 'admin_update') {
+  try {
+    window.localStorage.setItem(
+      AVAILABILITY_REFRESH_STORAGE_KEY,
+      JSON.stringify({
+        reason,
+        userEmail: USER_EMAIL,
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  } catch (error) {
+    console.warn('Failed to broadcast availability refresh:', error);
+  }
+}
+
+function parseIntegerInput(value, fallback) {
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
 // ============================================
 // BOOKING DISPLAY SETTINGS
 // ============================================
 function updateDisplayWindowPreview(days, minimumNoticeMinutes = document.getElementById('minimum-notice-minutes')?.value) {
-  const normalizedDays = Math.max(7, Math.min(60, parseInt(days, 10) || 20));
-  const normalizedNoticeMinutes = Math.max(0, Math.min(1440, parseInt(minimumNoticeMinutes, 10) || 30));
+  const normalizedDays = Math.max(7, Math.min(60, parseIntegerInput(days, 20)));
+  const normalizedNoticeMinutes = Math.max(0, Math.min(1440, parseIntegerInput(minimumNoticeMinutes, 30)));
   const daysValue = document.getElementById('display-window-days-value');
   const summary = document.getElementById('display-settings-summary');
   const noticeSummary = document.getElementById('minimum-notice-summary');
@@ -603,11 +626,19 @@ async function saveDisplaySettings(event) {
       throw new Error(result.error || 'Failed to save booking display settings');
     }
 
+    document.getElementById('display-window-days').value =
+      result.settings?.displayWindowDays || displayWindowDays;
+    document.getElementById('minimum-notice-minutes').value =
+      result.settings?.minimumNoticeMinutes ?? minimumNoticeMinutes;
+    document.getElementById('ai-concierge-enabled').checked =
+      result.settings?.aiConciergeEnabled !== false;
+
     updateDisplayWindowPreview(
       result.settings?.displayWindowDays || displayWindowDays,
       result.settings?.minimumNoticeMinutes ?? minimumNoticeMinutes
     );
-    showNotification('success', 'Booking display settings saved');
+    broadcastAvailabilityRefresh('display_settings_saved');
+    showNotification('success', 'Booking display settings saved and live availability refreshed');
   } catch (error) {
     console.error('Failed to save display settings:', error);
     showNotification('error', error.message || 'Failed to save booking display settings');
@@ -943,6 +974,7 @@ async function addBlackout(event) {
       throw new Error(error.error || 'Failed to create blackout');
     }
 
+    broadcastAvailabilityRefresh('blackout_added');
     showNotification('success', 'Blackout period added successfully');
 
     // Clear form
@@ -999,6 +1031,7 @@ async function deleteBlackout(blackoutId, button = null) {
       throw new Error(error?.error || 'Failed to delete blackout');
     }
 
+    broadcastAvailabilityRefresh('blackout_deleted');
     showNotification('success', 'Blackout period deleted');
     await loadBlackouts();
 
@@ -1129,7 +1162,8 @@ async function saveWorkingHours(event) {
       throw new Error(error.error || 'Failed to save working hours');
     }
 
-    showNotification('success', 'Working hours saved successfully');
+    broadcastAvailabilityRefresh('working_hours_saved');
+    showNotification('success', 'Working hours saved and live availability refreshed');
     await loadWorkingHours();
 
   } catch (error) {

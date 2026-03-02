@@ -446,12 +446,21 @@ async function getDisplaySettingsForUser(
   return { supabase, settings };
 }
 
+async function invalidateCalendarAvailabilityCache(): Promise<void> {
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  calendarService?.invalidateAvailabilityCache();
+}
+
 /**
  * Get Available Time Slots
  * GET /api/calendar/availability?duration=30&start=2026-03-01
  */
 router.get('/availability', async (req: Request, res: Response): Promise<void> => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const config = getSchedulingConfig();
     const userEmail = resolveUserEmail(req.query['user_email']);
@@ -813,6 +822,10 @@ router.delete('/holds/selection/:holdId', async (req: Request, res: Response): P
  * GET /api/calendar/config/show-slots
  */
 router.get('/config/show-slots', async (req: Request, res: Response): Promise<void> => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const enabled = process.env['SHOW_CALENDAR_SLOTS'] === 'true';
   const config = getSchedulingConfig();
   const userEmail = resolveUserEmail(req.query['user_email']);
@@ -839,6 +852,10 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
  */
 router.get('/preferences', async (req: Request, res: Response): Promise<void> => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const config = getSchedulingConfig();
     const userEmail = resolveUserEmail(req.query['user_email']);
     const { settings } = await getDisplaySettingsForUser(
@@ -920,6 +937,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         requirePersistentStore: true,
       }
     );
+
+    await invalidateCalendarAvailabilityCache();
 
     res.json({
       success: true,
