@@ -50,11 +50,11 @@ async function readJsonResponse(response) {
     );
   }
 }
-
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
+  initAccessCodeProtection();
   await loadSystemStatus();
   await loadCalendars();
   setupConnectButton();
@@ -110,11 +110,11 @@ async function loadSystemStatus() {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             <span>${new Date(data.timestamp).toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit'
-            })}</span>
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })}</span>
           </div>
         </div>
       </div>
@@ -1556,3 +1556,80 @@ window.setPrimaryCalendar = setPrimaryCalendar;
 window.switchTab = switchTab;
 window.deleteBlackout = deleteBlackout;
 window.toggleDayInputs = toggleDayInputs;
+
+// ============================================
+// ACCESS CODE PROTECTION
+// ============================================
+function initAccessCodeProtection() {
+  const ACCESS_CODE = '102886';
+  const STORAGE_KEY = 'autonome_admin_access_granted';
+  const overlay = document.getElementById('admin-access-overlay');
+  const body = document.body;
+  const inputs = document.querySelectorAll('.passcode-digit');
+
+  // Check if session is already verified
+  if (window.sessionStorage.getItem(STORAGE_KEY) === 'true') {
+    grantAccess();
+    return;
+  }
+
+  // Handle digit input flow
+  inputs.forEach((input, index) => {
+    // Auto-focus first input
+    if (index === 0) input.focus();
+
+    input.addEventListener('input', (e) => {
+      const value = e.target.value;
+      if (value && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+      }
+      checkPasscode();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !e.target.value && index > 0) {
+        inputs[index - 1].focus();
+      }
+    });
+
+    // Handle paste
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasteData = e.clipboardData.getData('text').slice(0, inputs.length);
+      pasteData.split('').forEach((char, i) => {
+        if (inputs[i]) inputs[i].value = char;
+      });
+      if (inputs[pasteData.length]) inputs[pasteData.length].focus();
+      checkPasscode();
+    });
+  });
+
+  function checkPasscode() {
+    const enteredCode = Array.from(inputs).map(input => input.value).join('');
+
+    if (enteredCode.length === inputs.length) {
+      if (enteredCode === ACCESS_CODE) {
+        grantAccess();
+      } else {
+        handleError();
+      }
+    }
+  }
+
+  function grantAccess() {
+    window.sessionStorage.setItem(STORAGE_KEY, 'true');
+    overlay.classList.add('hidden');
+    body.classList.add('verified');
+  }
+
+  function handleError() {
+    inputs.forEach(input => {
+      input.classList.add('error');
+      setTimeout(() => {
+        input.classList.remove('error');
+        input.value = '';
+        if (inputs[0]) inputs[0].focus();
+      }, 500);
+    });
+  }
+}

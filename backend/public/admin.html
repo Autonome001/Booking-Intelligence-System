@@ -1,18 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calendar Manager | Autonome.us Admin</title>
   <meta name="description" content="Manage connected Google Calendar accounts for Autonome booking system">
   <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Access Code Overlay Styles */
+    #admin-access-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--midnight);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(20px);
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    #admin-access-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .access-content {
+      text-align: center;
+      max-width: 400px;
+      padding: 3rem;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-premium), 0 0 30px var(--electric-blue-glow);
+      animation: access-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes access-fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .access-logo {
+      width: 80px;
+      height: auto;
+      margin-bottom: 2rem;
+      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.3));
+    }
+
+    .access-title {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--white);
+    }
+
+    .access-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 2.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .passcode-container {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    .passcode-digit {
+      width: 45px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-md);
+      color: var(--white);
+      font-size: 1.5rem;
+      font-weight: 700;
+      text-align: center;
+      line-height: 60px;
+      transition: var(--transition-smooth);
+    }
+
+    .passcode-digit:focus {
+      outline: none;
+      border-color: var(--electric-blue);
+      box-shadow: 0 0 15px var(--electric-blue-glow);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .passcode-digit.error {
+      border-color: var(--error);
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+      animation: shake 0.4s ease-in-out;
+    }
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      25% {
+        transform: translateX(-5px);
+      }
+
+      75% {
+        transform: translateX(5px);
+      }
+    }
+
+    /* Hide actual content until verified */
+    .admin-page main,
+    .admin-page header,
+    .admin-page footer {
+      display: none;
+    }
+
+    .admin-page.verified main,
+    .admin-page.verified header {
+      display: block;
+    }
+
+    .admin-page.verified footer {
+      display: flex;
+      justify-content: center;
+    }
+  </style>
 </head>
+
 <body class="admin-page">
+  <!-- Access Code Overlay -->
+  <div id="admin-access-overlay">
+    <div class="access-content">
+      <img src="/Autonome Partners - Logo Icon (White).png" alt="Autonome Logo" class="access-logo">
+      <h2 class="access-title">Secure Access</h2>
+      <p class="access-subtitle">Enter Access Code</p>
+
+      <div class="passcode-container" id="passcode-inputs">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+        <input type="password" maxlength="1" class="passcode-digit" inputmode="numeric">
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="header admin-header">
     <div class="container">
-      <svg class="icon-xl" style="display: block; margin: 0 auto 1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      <svg class="icon-xl" style="display: block; margin: 0 auto 1rem;" fill="none" stroke="currentColor"
+        viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
       <h1>Calendar Connection Manager</h1>
       <p>Connect up to 7 Google Calendar accounts to sync your availability</p>
@@ -25,8 +184,10 @@
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">
-          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none"
+            stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           System Status
         </h3>
@@ -44,13 +205,15 @@
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">
-          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none"
+            stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
           Connected Calendars
         </h3>
         <p class="card-subtitle" id="calendar-count">Loading...</p>
-        <p class="card-subtitle">Choose one linked calendar as the booking destination. Confirmed meetings post there and customer invites are sent from that calendar.</p>
+        <p class="card-subtitle">Choose one linked calendar as the booking destination. Confirmed meetings post there
+          and customer invites are sent from that calendar.</p>
         <p id="calendar-warning" class="admin-inline-note hidden"></p>
       </div>
 
@@ -70,7 +233,7 @@
           <div>
             <button type="button" id="save-booking-destination-btn" class="btn btn-primary">
               <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
               <span>Save Booking Destination</span>
             </button>
@@ -91,7 +254,7 @@
       <!-- Connect New Calendar Button -->
       <button id="connect-btn" class="btn btn-primary" style="margin-top: 1.5rem;" disabled>
         <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
         <span>Connect Google Calendar</span>
       </button>
@@ -101,8 +264,10 @@
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">
-          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none"
+            stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Availability Settings
         </h3>
@@ -122,15 +287,7 @@
             </div>
           </div>
 
-          <input
-            type="range"
-            id="display-window-days"
-            min="7"
-            max="60"
-            step="1"
-            value="20"
-            class="admin-range"
-          >
+          <input type="range" id="display-window-days" min="7" max="60" step="1" value="20" class="admin-range">
 
           <div class="admin-preset-row">
             <button type="button" class="admin-preset-button" data-days="7">1 Week</button>
@@ -142,15 +299,8 @@
           <div class="admin-settings-grid" style="margin-bottom: 1rem; align-items: end;">
             <div>
               <label class="form-label" for="minimum-notice-minutes">Booking Buffer (Minimum Notice)</label>
-              <input
-                type="number"
-                id="minimum-notice-minutes"
-                class="form-input"
-                min="0"
-                max="1440"
-                step="5"
-                value="30"
-              >
+              <input type="number" id="minimum-notice-minutes" class="form-input" min="0" max="1440" step="5"
+                value="30">
               <p id="minimum-notice-summary" class="admin-settings-summary" style="margin-top: 0.5rem;">
                 Customers must book at least 30 minutes in advance.
               </p>
@@ -166,7 +316,8 @@
           <div class="admin-settings-grid">
             <div class="admin-setting-copy">
               <label class="form-label" for="ai-concierge-enabled">AI Booking Concierge</label>
-              <p id="display-settings-summary" class="admin-settings-summary">Customers can browse the next 20 days of availability and must book at least 30 minutes ahead.</p>
+              <p id="display-settings-summary" class="admin-settings-summary">Customers can browse the next 20 days of
+                availability and must book at least 30 minutes ahead.</p>
             </div>
             <label class="admin-toggle-switch" for="ai-concierge-enabled">
               <input type="checkbox" id="ai-concierge-enabled" checked>
@@ -177,7 +328,7 @@
 
           <button type="submit" id="save-display-settings-btn" class="btn btn-primary btn-sm">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
             Save Booking Display Settings
           </button>
@@ -185,16 +336,21 @@
       </div>
 
       <!-- Tab Navigation -->
-      <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
-        <button type="button" id="blackouts-tab" class="tab-button active" data-tab="blackouts" onclick="switchTab('blackouts')">
+      <div
+        style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
+        <button type="button" id="blackouts-tab" class="tab-button active" data-tab="blackouts"
+          onclick="switchTab('blackouts')">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
           </svg>
           Blackout Periods
         </button>
-        <button type="button" id="working-hours-tab" class="tab-button" data-tab="working-hours" onclick="switchTab('working-hours')">
+        <button type="button" id="working-hours-tab" class="tab-button" data-tab="working-hours"
+          onclick="switchTab('working-hours')">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Working Hours
         </button>
@@ -203,7 +359,8 @@
       <!-- Blackouts Tab Content -->
       <div id="blackouts-content" class="tab-content">
         <!-- Add Blackout Form -->
-        <div style="background: var(--gray-50); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+        <div
+          style="background: var(--gray-50); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
           <h4 style="margin-bottom: 1rem; font-size: 16px; font-weight: 600;">Add Blackout Period</h4>
           <form id="blackout-form">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
@@ -228,7 +385,7 @@
             </div>
             <button type="submit" class="btn btn-primary">
               <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
               Add Blackout
             </button>
@@ -246,7 +403,8 @@
 
       <!-- Working Hours Tab Content -->
       <div id="working-hours-content" class="tab-content hidden">
-        <p style="color: var(--gray-600); margin-bottom: 1.5rem;">Define your standard working hours for each day of the week. Bookings will only be offered during these times.</p>
+        <p style="color: var(--gray-600); margin-bottom: 1.5rem;">Define your standard working hours for each day of the
+          week. Bookings will only be offered during these times.</p>
 
         <form id="working-hours-form">
           <div style="display: grid; grid-template-columns: minmax(220px, 320px); gap: 1rem; margin-bottom: 1.5rem;">
@@ -277,7 +435,7 @@
 
           <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
             Save Working Hours
           </button>
@@ -289,8 +447,10 @@
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">
-          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none"
+            stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
           Meeting Notifications
         </h3>
@@ -313,7 +473,9 @@
             </select>
           </div>
           <div class="admin-inline-note">
-            Available placeholders: <code>{customer_name}</code>, <code>{company_name}</code>, <code>{meeting_date}</code>, <code>{meeting_time}</code>, <code>{meeting_datetime}</code>, <code>{booking_id}</code>, <code>{timezone}</code>
+            Available placeholders: <code>{customer_name}</code>, <code>{company_name}</code>,
+            <code>{meeting_date}</code>, <code>{meeting_time}</code>, <code>{meeting_datetime}</code>,
+            <code>{booking_id}</code>, <code>{timezone}</code>
           </div>
         </div>
 
@@ -362,7 +524,7 @@
 
         <button type="submit" id="save-notification-settings-btn" class="btn btn-primary">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
           Save Notification Settings
         </button>
@@ -374,12 +536,15 @@
       <div class="card-header admin-guide-heading">
         <div>
           <h3 class="card-title">
-            <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none"
+              stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             How It Works
           </h3>
-          <p class="card-subtitle">A clean view of the scheduling flow, plus a quick way to preview the live customer experience without leaving the admin console.</p>
+          <p class="card-subtitle">A clean view of the scheduling flow, plus a quick way to preview the live customer
+            experience without leaving the admin console.</p>
         </div>
 
         <a href="/" target="_blank" rel="noopener noreferrer" class="admin-scheduler-cta">
@@ -389,7 +554,7 @@
           <span class="admin-scheduler-cta-action">
             <span>Launch Preview</span>
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8" />
             </svg>
           </span>
         </a>
@@ -400,7 +565,8 @@
           <div class="admin-guide-step-badge">1</div>
           <div class="admin-guide-step-body">
             <h4>Connect Your Calendars</h4>
-            <p>Add each personal or business calendar you want included in your availability. The system supports up to 7 connected calendars.</p>
+            <p>Add each personal or business calendar you want included in your availability. The system supports up to
+              7 connected calendars.</p>
           </div>
         </article>
 
@@ -408,7 +574,8 @@
           <div class="admin-guide-step-badge">2</div>
           <div class="admin-guide-step-body">
             <h4>Booking Calendar Availability</h4>
-            <p>Customer-facing time slots come from the calendar you mark as the booking destination, so the public schedule reflects the consultation calendar you actually use.</p>
+            <p>Customer-facing time slots come from the calendar you mark as the booking destination, so the public
+              schedule reflects the consultation calendar you actually use.</p>
           </div>
         </article>
 
@@ -416,7 +583,8 @@
           <div class="admin-guide-step-badge">3</div>
           <div class="admin-guide-step-body">
             <h4>Live Sync</h4>
-            <p>As you create or edit events in Google Calendar, your booking availability updates automatically so customers always see a current schedule.</p>
+            <p>As you create or edit events in Google Calendar, your booking availability updates automatically so
+              customers always see a current schedule.</p>
           </div>
         </article>
 
@@ -424,14 +592,16 @@
           <div class="admin-guide-step-badge">4</div>
           <div class="admin-guide-step-body">
             <h4>Booking Flow</h4>
-            <p>Customers choose from your live availability, submit their request, and the confirmed consultation is posted to the calendar you marked as the booking destination.</p>
+            <p>Customers choose from your live availability, submit their request, and the confirmed consultation is
+              posted to the calendar you marked as the booking destination.</p>
           </div>
         </article>
       </div>
 
       <div class="admin-guide-footer">
         <div class="admin-guide-note">
-          Keep this admin page open while testing. The scheduler opens in a separate tab so you can verify the customer experience without losing your current configuration view.
+          Keep this admin page open while testing. The scheduler opens in a separate tab so you can verify the customer
+          experience without losing your current configuration view.
         </div>
       </div>
     </div>
@@ -439,9 +609,11 @@
 
   <!-- Footer -->
   <footer class="footer">
-    <p>Powered by <a href="https://autonome.us" target="_blank" rel="noopener noreferrer">Autonome.us</a> | Booking Admin Console</p>
+    <p>Powered by <a href="https://autonome.us" target="_blank" rel="noopener noreferrer">Autonome.us</a> | Booking
+      Admin Console</p>
   </footer>
 
   <script src="/admin.js"></script>
 </body>
+
 </html>
