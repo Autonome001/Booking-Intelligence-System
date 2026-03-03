@@ -36,6 +36,13 @@ interface PostgrestLikeError {
   message?: string;
 }
 
+interface PersistedNotificationSettingsRow {
+  timezone: string | null;
+  pre_meeting: unknown;
+  post_meeting: unknown;
+  updated_at: string | null;
+}
+
 const MISSING_TABLE_CODE = 'PGRST205';
 const MAX_PRE_MEETING_REMINDERS = 5;
 const DEFAULT_TIMEZONE = 'America/New_York';
@@ -212,6 +219,56 @@ function sanitizeSettings(
   };
 }
 
+function mapDatabaseBackedSettings(
+  row: PersistedNotificationSettingsRow,
+  fallbackSettings: MeetingNotificationSettings
+): MeetingNotificationSettings {
+  return sanitizeSettings({
+    timezone: row.timezone || fallbackSettings.timezone,
+    preMeeting: Array.isArray(row.pre_meeting)
+      ? row.pre_meeting.map((reminder, index) => ({
+          id: String((reminder as Record<string, unknown>)['id'] || `reminder_${index + 1}`),
+          enabled: Boolean((reminder as Record<string, unknown>)['enabled']),
+          minutesBefore: normalizeMinutes(
+            (reminder as Record<string, unknown>)['minutes_before'],
+            fallbackSettings.preMeeting[index]?.minutesBefore || 5,
+            60 * 24 * 30
+          ),
+          subjectTemplate: String(
+            (reminder as Record<string, unknown>)['subject_template']
+              || fallbackSettings.preMeeting[index]?.subjectTemplate
+              || ''
+          ),
+          bodyTemplate: String(
+            (reminder as Record<string, unknown>)['body_template']
+              || fallbackSettings.preMeeting[index]?.bodyTemplate
+              || ''
+          ),
+        }))
+      : fallbackSettings.preMeeting,
+    postMeeting:
+      row.post_meeting && typeof row.post_meeting === 'object'
+        ? {
+            enabled: Boolean((row.post_meeting as Record<string, unknown>)['enabled']),
+            minutesAfter: normalizeMinutes(
+              (row.post_meeting as Record<string, unknown>)['minutes_after'],
+              fallbackSettings.postMeeting.minutesAfter,
+              60 * 24 * 7
+            ),
+            subjectTemplate: String(
+              (row.post_meeting as Record<string, unknown>)['subject_template']
+                || fallbackSettings.postMeeting.subjectTemplate
+            ),
+            bodyTemplate: String(
+              (row.post_meeting as Record<string, unknown>)['body_template']
+                || fallbackSettings.postMeeting.bodyTemplate
+            ),
+          }
+        : fallbackSettings.postMeeting,
+    updatedAt: row.updated_at || fallbackSettings.updatedAt,
+  });
+}
+
 export function defaultMeetingNotificationSettings(): MeetingNotificationSettings {
   return {
     timezone: DEFAULT_TIMEZONE,
@@ -362,57 +419,13 @@ async function persistDatabaseBackedSettings(
       { onConflict: 'user_email' }
     )
     .select('timezone, pre_meeting, post_meeting, updated_at')
-    .single<{
-      timezone: string | null;
-      pre_meeting: unknown;
-      post_meeting: unknown;
-      updated_at: string | null;
-    }>();
+    .single<PersistedNotificationSettingsRow>();
 
   if (error || !data) {
     return null;
   }
 
-  return sanitizeSettings({
-    timezone: data.timezone || nextSettings.timezone,
-    preMeeting: Array.isArray(data.pre_meeting)
-      ? (data.pre_meeting as Array<Record<string, unknown>>).map((reminder, index) => ({
-          id: String(reminder['id'] || `reminder_${index + 1}`),
-          enabled: Boolean(reminder['enabled']),
-          minutesBefore: normalizeMinutes(
-            reminder['minutes_before'],
-            nextSettings.preMeeting[index]?.minutesBefore || 5,
-            60 * 24 * 30
-          ),
-          subjectTemplate: String(
-            reminder['subject_template'] || nextSettings.preMeeting[index]?.subjectTemplate || ''
-          ),
-          bodyTemplate: String(
-            reminder['body_template'] || nextSettings.preMeeting[index]?.bodyTemplate || ''
-          ),
-        }))
-      : nextSettings.preMeeting,
-    postMeeting:
-      data.post_meeting && typeof data.post_meeting === 'object'
-        ? {
-            enabled: Boolean((data.post_meeting as Record<string, unknown>)['enabled']),
-            minutesAfter: normalizeMinutes(
-              (data.post_meeting as Record<string, unknown>)['minutes_after'],
-              nextSettings.postMeeting.minutesAfter,
-              60 * 24 * 7
-            ),
-            subjectTemplate: String(
-              (data.post_meeting as Record<string, unknown>)['subject_template']
-                || nextSettings.postMeeting.subjectTemplate
-            ),
-            bodyTemplate: String(
-              (data.post_meeting as Record<string, unknown>)['body_template']
-                || nextSettings.postMeeting.bodyTemplate
-            ),
-          }
-        : nextSettings.postMeeting,
-    updatedAt: data.updated_at || nextSettings.updatedAt,
-  });
+  return mapDatabaseBackedSettings(data, nextSettings);
 }
 
 export async function getMeetingNotificationSettings(
@@ -444,12 +457,7 @@ export async function getMeetingNotificationSettings(
     .from('meeting_notification_settings')
     .select('timezone, pre_meeting, post_meeting, updated_at')
     .eq('user_email', userEmail)
-    .maybeSingle<{
-      timezone: string | null;
-      pre_meeting: unknown;
-      post_meeting: unknown;
-      updated_at: string | null;
-    }>();
+    .maybeSingle<PersistedNotificationSettingsRow>();
 
   if (error) {
     if (options.requirePersistentStore) {
@@ -474,15 +482,7 @@ export async function getMeetingNotificationSettings(
     return fallbackSettings;
   }
 
-  const resolvedSettings = sanitizeSettings({
-    timezone: data.timezone || fallbackSettings.timezone,
-    preMeeting: Array.isArray(data.pre_meeting) ? (data.pre_meeting as PreMeetingReminderConfig[]) : fallbackSettings.preMeeting,
-    postMeeting:
-      data.post_meeting && typeof data.post_meeting === 'object'
-        ? (data.post_meeting as PostMeetingThankYouConfig)
-        : fallbackSettings.postMeeting,
-    updatedAt: data.updated_at || fallbackSettings.updatedAt,
-  });
+  const resolvedSettings = mapDatabaseBackedSettings(data, fallbackSettings);
 
   if (
     persistedFileSettings
@@ -567,28 +567,7 @@ export async function getAllMeetingNotificationSettings(
 
   return data.map((row: any) => ({
     userEmail: row.user_email,
-    settings: sanitizeSettings({
-      timezone: row.timezone,
-      preMeeting: Array.isArray(row.pre_meeting)
-        ? row.pre_meeting.map((reminder: any, index: number) => ({
-            id: String(reminder['id'] || `reminder_${index + 1}`),
-            enabled: Boolean(reminder['enabled']),
-            minutesBefore: normalizeMinutes(reminder['minutes_before'], 5, 60 * 24 * 30),
-            subjectTemplate: String(reminder['subject_template'] || ''),
-            bodyTemplate: String(reminder['body_template'] || ''),
-          }))
-        : undefined,
-      postMeeting:
-        row.post_meeting && typeof row.post_meeting === 'object'
-          ? {
-              enabled: Boolean(row.post_meeting['enabled']),
-              minutesAfter: normalizeMinutes(row.post_meeting['minutes_after'], 5, 60 * 24 * 7),
-              subjectTemplate: String(row.post_meeting['subject_template'] || ''),
-              bodyTemplate: String(row.post_meeting['body_template'] || ''),
-            }
-          : undefined,
-      updatedAt: row.updated_at,
-    }),
+    settings: mapDatabaseBackedSettings(row as PersistedNotificationSettingsRow, defaultMeetingNotificationSettings()),
   }));
 }
 

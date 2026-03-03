@@ -384,6 +384,60 @@ describe('settings persistence fallbacks', () => {
     });
   });
 
+  it('preserves custom notification lead times when reloading database-backed settings', async () => {
+    const userEmail = 'notification-settings-db-read@autonome.test';
+
+    const loaded = await getMeetingNotificationSettings(
+      createReadableNotificationSupabase({
+        timezone: 'America/Chicago',
+        pre_meeting: [
+          {
+            id: 'reminder_1',
+            enabled: true,
+            minutes_before: 180,
+            subject_template: 'Heads up',
+            body_template: 'Reminder body',
+          },
+          {
+            id: 'reminder_2',
+            enabled: true,
+            minutes_before: 45,
+            subject_template: 'Almost time',
+            body_template: 'Starts soon',
+          },
+        ],
+        post_meeting: {
+          enabled: true,
+          minutes_after: 10,
+          subject_template: 'Thanks',
+          body_template: 'Thank you body',
+        },
+        updated_at: '2026-03-02T12:00:00.000Z',
+      }),
+      userEmail
+    );
+
+    expect(loaded.timezone).toBe('America/Chicago');
+    expect(loaded.preMeeting[0]).toMatchObject({
+      enabled: true,
+      minutesBefore: 180,
+      subjectTemplate: 'Heads up',
+      bodyTemplate: 'Reminder body',
+    });
+    expect(loaded.preMeeting[1]).toMatchObject({
+      enabled: true,
+      minutesBefore: 45,
+      subjectTemplate: 'Almost time',
+      bodyTemplate: 'Starts soon',
+    });
+    expect(loaded.postMeeting).toMatchObject({
+      enabled: true,
+      minutesAfter: 10,
+      subjectTemplate: 'Thanks',
+      bodyTemplate: 'Thank you body',
+    });
+  });
+
   it('prefers newer file-backed notification settings over stale database rows', async () => {
     const userEmail = 'notification-settings-fallback-test@autonome.test';
 
