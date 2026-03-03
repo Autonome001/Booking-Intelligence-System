@@ -42,6 +42,7 @@ export interface CalendarEvent {
   attendees?: string[];
   location?: string;
   meetingLink?: string;
+  sendUpdates?: 'all' | 'externalOnly' | 'none';
 }
 
 export interface WebhookSubscription {

@@ -168,7 +168,7 @@ export function getServiceConfig(serviceName: ServiceName): ServiceConfig {
     },
     email: {
       apiKey: process.env['RESEND_API_KEY'] || '',
-      fromAddress: process.env['EMAIL_FROM_ADDRESS'] || 'bookings@autonome.us',
+      fromAddress: process.env['EMAIL_FROM_ADDRESS'] || 'booking@autonome.us',
     },
     calendar: {
       clientId: process.env['GOOGLE_CLIENT_ID'] || '',

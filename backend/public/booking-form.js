@@ -11,6 +11,8 @@ let isBookingChatLoading = false;
 let bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 let selectedHoldId = null;
 let isSlotSelectionPending = false;
+let currentAvailabilitySlots = [];
+let activeDayFilter = 'all';
 const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
 const AVAILABILITY_REFRESH_STORAGE_KEY = 'autonome_availability_refresh';
 const BOOKING_USER_EMAIL = resolveBookingUserEmail();
@@ -104,12 +106,25 @@ async function fetchAvailability(weekOffset) {
   const slotsContainer = document.getElementById('slots-container');
   const prevBtn = document.getElementById('prev-week');
   const nextBtn = document.getElementById('next-week');
+  const filterPanel = document.getElementById('availability-filter-panel');
+  const filterBar = document.getElementById('availability-day-filter');
+  const filterSummary = document.getElementById('availability-filter-summary');
+
+  currentAvailabilitySlots = [];
+  activeDayFilter = 'all';
 
   slotsContainer.innerHTML = `
     <div class="skeleton" style="height: 100px;"></div>
     <div class="skeleton" style="height: 100px;"></div>
     <div class="skeleton" style="height: 100px;"></div>
   `;
+  filterPanel?.classList.add('hidden');
+  if (filterBar) {
+    filterBar.innerHTML = '';
+  }
+  if (filterSummary) {
+    filterSummary.textContent = '';
+  }
 
   try {
     const startDate = new Date();
@@ -134,6 +149,8 @@ async function fetchAvailability(weekOffset) {
     nextBtn.disabled = ((weekOffset + 1) * 7) >= maxDisplayDays;
 
     if (data.slots && data.slots.length > 0) {
+      currentAvailabilitySlots = data.slots;
+      renderAvailabilityFilter(data.slots);
       renderSlots(data.slots);
     } else {
       slotsContainer.innerHTML = `
@@ -162,13 +179,152 @@ async function fetchAvailability(weekOffset) {
 // ============================================
 // RENDER SLOTS
 // ============================================
-function renderSlots(slots) {
-  const slotsContainer = document.getElementById('slots-container');
-  slotsContainer.innerHTML = '';
+function getDayFilterMetadata(slots) {
+  const dayMap = new Map();
 
   slots.forEach((slot) => {
-    const slotCard = createSlotCard(slot);
-    slotsContainer.appendChild(slotCard);
+    const slotDate = new Date(slot.start);
+    const dayKey = String(slotDate.getDay());
+    const existing = dayMap.get(dayKey);
+
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+
+    dayMap.set(dayKey, {
+      key: dayKey,
+      dayIndex: slotDate.getDay(),
+      label: slotDate.toLocaleDateString('en-US', { weekday: 'long' }),
+      shortLabel: slotDate.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: 1,
+    });
+  });
+
+  return Array.from(dayMap.values()).sort((a, b) => a.dayIndex - b.dayIndex);
+}
+
+function renderAvailabilityFilter(slots) {
+  const filterPanel = document.getElementById('availability-filter-panel');
+  const filterBar = document.getElementById('availability-day-filter');
+  const filterSummary = document.getElementById('availability-filter-summary');
+
+  if (!filterPanel || !filterBar || !filterSummary) {
+    return;
+  }
+
+  const dayOptions = getDayFilterMetadata(slots);
+
+  if (!dayOptions.length) {
+    filterPanel.classList.add('hidden');
+    filterBar.innerHTML = '';
+    filterSummary.textContent = '';
+    return;
+  }
+
+  filterPanel.classList.remove('hidden');
+  const totalSlots = slots.length;
+  const activeOption = activeDayFilter === 'all'
+    ? null
+    : dayOptions.find((option) => option.key === activeDayFilter);
+
+  filterSummary.textContent = activeOption
+    ? `${activeOption.count} ${activeOption.count === 1 ? 'time' : 'times'} on ${activeOption.label}`
+    : `${totalSlots} open ${totalSlots === 1 ? 'time' : 'times'} across ${dayOptions.length} day${dayOptions.length === 1 ? '' : 's'}`;
+
+  const filterButtons = [
+    `
+      <button
+        type="button"
+        class="availability-filter-chip ${activeDayFilter === 'all' ? 'active' : ''}"
+        data-day-filter="all"
+      >
+        <span>All Days</span>
+        <span class="availability-filter-chip-count">${totalSlots}</span>
+      </button>
+    `,
+    ...dayOptions.map((option) => `
+      <button
+        type="button"
+        class="availability-filter-chip ${activeDayFilter === option.key ? 'active' : ''}"
+        data-day-filter="${option.key}"
+      >
+        <span>${option.label}</span>
+        <span class="availability-filter-chip-count">${option.count}</span>
+      </button>
+    `),
+  ];
+
+  filterBar.innerHTML = filterButtons.join('');
+}
+
+function renderSlots(slots) {
+  const slotsContainer = document.getElementById('slots-container');
+  const visibleSlots = activeDayFilter === 'all'
+    ? slots
+    : slots.filter((slot) => String(new Date(slot.start).getDay()) === activeDayFilter);
+
+  slotsContainer.innerHTML = '';
+
+  if (!visibleSlots.length) {
+    const filteredDayLabel = new Date(
+      currentAvailabilitySlots.find((slot) => String(new Date(slot.start).getDay()) === activeDayFilter)?.start
+      || Date.now()
+    ).toLocaleDateString('en-US', { weekday: 'long' });
+
+    slotsContainer.innerHTML = `
+      <div class="availability-empty-state">
+        <div class="availability-empty-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="availability-empty-title">No open times for ${filteredDayLabel}</div>
+          <p class="availability-empty-copy">Choose another day to see the rest of this week’s availability.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const groupedSlots = visibleSlots.reduce((groups, slot) => {
+    const slotDate = new Date(slot.start);
+    const groupKey = slotDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = [];
+    }
+
+    groups[groupKey].push(slot);
+    return groups;
+  }, {});
+
+  Object.entries(groupedSlots).forEach(([groupLabel, groupSlots]) => {
+    const daySection = document.createElement('section');
+    daySection.className = 'availability-day-section';
+    daySection.innerHTML = `
+      <div class="availability-day-header">
+        <div>
+          <div class="availability-day-label">${groupLabel}</div>
+          <div class="availability-day-count">${groupSlots.length} open ${groupSlots.length === 1 ? 'time' : 'times'}</div>
+        </div>
+      </div>
+      <div class="availability-day-slots"></div>
+    `;
+
+    const daySlotsContainer = daySection.querySelector('.availability-day-slots');
+
+    groupSlots.forEach((slot) => {
+      const slotCard = createSlotCard(slot);
+      daySlotsContainer.appendChild(slotCard);
+    });
+
+    slotsContainer.appendChild(daySection);
   });
 }
 
@@ -327,6 +483,32 @@ function setupWeekNavigation() {
     fetchAvailability(currentWeekOffset);
     selectedSlot = null;
     syncSelectedSlotUI();
+  });
+
+  document.getElementById('availability-day-filter')?.addEventListener('click', async (event) => {
+    const target = event.target instanceof Element ? event.target.closest('[data-day-filter]') : null;
+
+    if (!target) {
+      return;
+    }
+
+    const nextFilter = target.getAttribute('data-day-filter') || 'all';
+
+    if (nextFilter === activeDayFilter) {
+      return;
+    }
+
+    const selectedSlotDay = selectedSlot ? String(new Date(selectedSlot.start).getDay()) : null;
+
+    if (selectedSlot && nextFilter !== 'all' && selectedSlotDay !== nextFilter) {
+      await releaseSelectedSlotHold();
+      selectedSlot = null;
+      syncSelectedSlotUI();
+    }
+
+    activeDayFilter = nextFilter;
+    renderAvailabilityFilter(currentAvailabilitySlots);
+    renderSlots(currentAvailabilitySlots);
   });
 }
 
@@ -636,6 +818,7 @@ function setupFormSubmission() {
       company: document.getElementById('company').value.trim(),
       phone: document.getElementById('phone').value.trim(),
       message: document.getElementById('message').value.trim(),
+      ai_concierge_engaged: hasUserChatContext(),
     };
 
     if (!formData.message && hasUserChatContext()) {
@@ -721,7 +904,7 @@ function showSuccess(result) {
 
   if (result.calendar_confirmed) {
     successTitle.textContent = 'Consultation Booked';
-    successBody.textContent = 'Your consultation is confirmed. A calendar invite has been sent to your email address.';
+    successBody.textContent = 'Your consultation is confirmed. A branded confirmation email with the meeting details has been sent to your email address.';
 
     const detailParts = [];
     if (result.confirmed_start) {

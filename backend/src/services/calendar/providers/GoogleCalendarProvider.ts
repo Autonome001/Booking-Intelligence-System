@@ -244,7 +244,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       const event = await this.calendar.events.patch({
         calendarId: this.calendarId,
         eventId: calendarEventId,
-        sendUpdates: 'all',
+        sendUpdates: eventDetails.sendUpdates || 'all',
         requestBody: {
           summary: eventDetails.summary || 'Confirmed Meeting',
           description: eventDetails.description,
@@ -446,7 +446,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     try {
       const event = await this.calendar.events.insert({
         calendarId: this.calendarId,
-        sendUpdates: 'all',
+        sendUpdates: eventDetails.sendUpdates || 'all',
         requestBody: {
           summary: eventDetails.summary,
           description: eventDetails.description,
@@ -487,7 +487,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       const event = await this.calendar.events.patch({
         calendarId: this.calendarId,
         eventId,
-        sendUpdates: 'all',
+        sendUpdates: updates.sendUpdates || 'all',
         requestBody: {
           summary: updates.summary,
           description: updates.description,

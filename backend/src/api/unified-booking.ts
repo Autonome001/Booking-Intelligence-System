@@ -36,6 +36,7 @@ interface BookingData {
   provisional_hold_id?: string;
   booking_session_id?: string;
   user_agent?: string;
+  ai_concierge_engaged?: boolean;
 }
 
 /**
@@ -148,6 +149,13 @@ function buildAutoReplyEmailSubject(booking: BookingLookupRecord): string {
 
 function buildAutoReplyEmailBody(booking: BookingLookupRecord, draft: string): string {
   return `${normalizeCustomerFacingEmailCopy(draft)}\n\nBooking reference: ${booking.processing_id}\nReply directly to continue scheduling with Autonome.`;
+}
+
+function shouldBypassInteractiveAIBookingFlow(bookingData: BookingData): boolean {
+  const hasSelectedSlot = typeof bookingData.provisional_hold_id === 'string'
+    && bookingData.provisional_hold_id.trim().length > 0;
+
+  return hasSelectedSlot && bookingData.ai_concierge_engaged !== true;
 }
 
 async function generateInboundReplyDraft(
@@ -373,7 +381,7 @@ async function sendBookingCustomerEmail(
       `When: ${formattedDate}`,
       calendarConfirmation?.meeting_link ? `Google Meet: ${calendarConfirmation.meeting_link}` : null,
       '',
-      'A calendar invitation has been issued to this email address, and this confirmation is your direct reference from the Autonome team.',
+      'This confirmation email is your direct reference from the Autonome team and includes the meeting details you need.',
       '',
       'If you need to adjust anything, simply reply to this email and we will help.',
       '',
@@ -454,6 +462,7 @@ async function confirmCalendarBooking(
     attendees: [bookingData.email],
     location: 'Autonome Partners Google Meet',
     meetingLink: 'generate',
+    sendUpdates: 'none',
   });
 
   const supabase = await serviceManager.getService<SupabaseClient>('supabase');
@@ -710,6 +719,8 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
     const provisionalHoldId = typeof req.body?.['provisional_hold_id'] === 'string'
       ? req.body['provisional_hold_id'].trim()
       : '';
+    const bookingData = req.body as BookingData;
+    const bypassInteractiveAIFlow = shouldBypassInteractiveAIBookingFlow(bookingData);
     const calendarBookingRequired = await requiresConfirmedCalendarBooking();
 
     if (calendarBookingRequired && !provisionalHoldId) {
@@ -733,31 +744,37 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
     switch (processingMode) {
       case ProcessingMode.FULL_AI:
         try {
-          result = await processFullAIMode(
-            req.body as BookingData,
-            requestId,
-            processEmergencyMode,
-            generateScheduleSuggestions
-          );
+          if (bypassInteractiveAIFlow) {
+            result = await processEmergencyMode(bookingData, requestId);
+            result.processing_mode = ProcessingMode.FULL_AI as any;
+            result.message = 'Your selected consultation time is being finalized.';
+          } else {
+            result = await processFullAIMode(
+              bookingData,
+              requestId,
+              processEmergencyMode,
+              generateScheduleSuggestions
+            );
+          }
         } catch (error) {
           logger.error('Full AI processing failed, falling back:', error);
-          result = await processFallbackMode(req.body as BookingData, requestId);
+          result = await processFallbackMode(bookingData, requestId);
         }
         break;
 
       case ProcessingMode.BASIC_AI:
         // Basic AI processing would go here
-        result = await processFallbackMode(req.body as BookingData, requestId);
+        result = await processFallbackMode(bookingData, requestId);
         result.processing_mode = ProcessingMode.BASIC_AI as any;
         result.message = 'Your booking request has been received and processed!';
         break;
 
       case ProcessingMode.FALLBACK:
-        result = await processFallbackMode(req.body as BookingData, requestId);
+        result = await processFallbackMode(bookingData, requestId);
         break;
 
       case ProcessingMode.EMERGENCY:
-        result = await processEmergencyMode(req.body as BookingData, requestId);
+        result = await processEmergencyMode(bookingData, requestId);
         break;
 
       default:
@@ -778,7 +795,7 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
 
     if ((result as { success?: boolean }).success && provisionalHoldId) {
       try {
-        calendarConfirmation = await confirmCalendarBooking(req.body as BookingData, requestId);
+        calendarConfirmation = await confirmCalendarBooking(bookingData, requestId);
 
         if (calendarConfirmation.confirmed) {
           (result as Record<string, unknown>)['calendar_confirmed'] = true;
@@ -786,7 +803,7 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
           (result as Record<string, unknown>)['meeting_link'] = calendarConfirmation.meeting_link;
           (result as Record<string, unknown>)['confirmed_start'] = calendarConfirmation.start;
           (result as Record<string, unknown>)['confirmed_end'] = calendarConfirmation.end;
-          result.message = `Your consultation is confirmed. A calendar invite has been sent to ${req.body.email}.`;
+          result.message = `Your consultation is confirmed. A confirmation email with the meeting details has been sent to ${bookingData.email}.`;
         }
       } catch (error) {
         calendarConfirmationError = error instanceof Error ? error.message : 'Unknown error';
@@ -794,7 +811,7 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
         (result as Record<string, unknown>)['calendar_confirmed'] = false;
         (result as Record<string, unknown>)['calendar_confirmation_error'] = calendarConfirmationError;
         result.message =
-          'Your request was received, but we could not finalize the calendar invite automatically. Our team will follow up manually.';
+          'Your request was received, but we could not finalize the meeting details automatically. Our team will follow up manually.';
       }
     }
 
@@ -814,7 +831,7 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
     if ((result as { success?: boolean }).success) {
       try {
         const emailReceipt = await sendBookingCustomerEmail(
-          req.body as BookingData,
+          bookingData,
           requestId,
           calendarConfirmation
         );

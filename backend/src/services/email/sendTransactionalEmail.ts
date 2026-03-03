@@ -38,7 +38,11 @@ export async function sendTransactionalEmail(
   options: SendTransactionalEmailOptions
 ): Promise<SendTransactionalEmailResult> {
   const emailConfig = getServiceConfig('email');
-  const fromAddress = emailConfig.fromAddress?.trim();
+  const configuredFromAddress = emailConfig.fromAddress?.trim();
+  const fromAddress =
+    configuredFromAddress?.toLowerCase() === 'bookings@autonome.us'
+      ? 'booking@autonome.us'
+      : configuredFromAddress;
 
   if (!fromAddress || !fromAddress.includes('@')) {
     throw new Error('EMAIL_FROM_ADDRESS is missing or invalid');

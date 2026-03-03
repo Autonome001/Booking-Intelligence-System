@@ -1,5 +1,5 @@
 const BOOKING_LINK = 'https://booking.autonome.us/';
-const PUBLIC_REPLY_ADDRESS = 'bookings@autonome.us';
+const PUBLIC_REPLY_ADDRESS = 'booking@autonome.us';
 
 export function normalizeCustomerFacingEmailCopy(content: string): string {
   let normalized = content || '';

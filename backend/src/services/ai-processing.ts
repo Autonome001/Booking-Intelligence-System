@@ -284,7 +284,7 @@ Requirements:
 - Keep it concise but personalized
 - Sign as "The Autonome.us Team"
 - Never mention any Gmail, personal, or non-company email address
-- If you mention an email contact, only use bookings@autonome.us
+- If you mention an email contact, only use booking@autonome.us
 - If you reference scheduling, use the live booking URL https://booking.autonome.us/
 
 For ${analysis.customer_tier} customers:
