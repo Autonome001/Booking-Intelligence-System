@@ -464,15 +464,40 @@ async function confirmCalendarBooking(
     meetingLink: 'generate',
     sendUpdates: 'none',
   });
+  let confirmedEvent = confirmed.event;
+
+  if (!confirmedEvent.meetingLink) {
+    const matchingProvider = calendarService
+      .getProviders()
+      .find((provider) => provider.calendarEmail === confirmed.calendarEmail);
+
+    if (matchingProvider && confirmedEvent.id) {
+      try {
+        const refreshedEvent = await matchingProvider.getEvent(confirmedEvent.id);
+        if (refreshedEvent.meetingLink) {
+          confirmedEvent = refreshedEvent;
+        }
+      } catch (error) {
+        logger.warn(`Confirmed calendar event re-fetch failed for ${bookingId}:`, error);
+      }
+    }
+  }
+
+  if (!confirmedEvent.meetingLink) {
+    logger.warn(`Calendar event confirmed without Google Meet link for ${bookingId}`, {
+      calendarEmail: confirmed.calendarEmail,
+      eventId: confirmedEvent.id,
+    });
+  }
 
   const supabase = await serviceManager.getService<SupabaseClient>('supabase');
 
   if (supabase) {
     const updatePayload: Record<string, unknown> = {
       assigned_calendar_email: confirmed.calendarEmail,
-      confirmed_event_id: confirmed.event.id,
-      selected_slot_start: confirmed.event.start.toISOString(),
-      selected_slot_end: confirmed.event.end.toISOString(),
+      confirmed_event_id: confirmedEvent.id,
+      selected_slot_start: confirmedEvent.start.toISOString(),
+      selected_slot_end: confirmedEvent.end.toISOString(),
       updated_at: new Date().toISOString(),
     };
 
@@ -488,18 +513,19 @@ async function confirmCalendarBooking(
 
   logger.info(`Calendar booking confirmed for ${bookingId}`, {
     calendarEmail: confirmed.calendarEmail,
-    eventId: confirmed.event.id,
-    start: confirmed.event.start.toISOString(),
-    end: confirmed.event.end.toISOString(),
+    eventId: confirmedEvent.id,
+    start: confirmedEvent.start.toISOString(),
+    end: confirmedEvent.end.toISOString(),
+    meetingLink: confirmedEvent.meetingLink,
   });
 
   return {
     confirmed: true,
     calendar_email: confirmed.calendarEmail,
-    event_id: confirmed.event.id,
-    meeting_link: confirmed.event.meetingLink,
-    start: confirmed.event.start.toISOString(),
-    end: confirmed.event.end.toISOString(),
+    event_id: confirmedEvent.id,
+    meeting_link: confirmedEvent.meetingLink,
+    start: confirmedEvent.start.toISOString(),
+    end: confirmedEvent.end.toISOString(),
   };
 }
 
