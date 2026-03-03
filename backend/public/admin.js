@@ -24,6 +24,30 @@ function resolveAdminUserEmail() {
   return resolvedUserEmail;
 }
 
+async function readJsonResponse(response) {
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawBody);
+  } catch (error) {
+    const trimmedBody = rawBody.trim();
+
+    if (trimmedBody.startsWith('<')) {
+      throw new Error(
+        `Server returned HTML instead of JSON (HTTP ${response.status}). Please refresh and try again.`
+      );
+    }
+
+    throw new Error(
+      `Server returned an unreadable response (HTTP ${response.status}). Please try again.`
+    );
+  }
+}
+
 // ============================================
 // INITIALIZATION
 // ============================================
@@ -254,7 +278,7 @@ function updateBookingDestinationSummary(calendarEmail) {
     return;
   }
 
-  summary.textContent = `Confirmed consultations currently post to ${calendarEmail}. Availability is still checked across all connected active calendars.`;
+  summary.textContent = `Confirmed consultations currently post to ${calendarEmail}. Customer-facing availability follows the booking destination calendar.`;
 }
 
 function setupBookingDestinationControls() {
@@ -380,13 +404,20 @@ async function setPrimaryCalendar(calendarId, calendarEmail, triggerButton = nul
     setButtonLoading(triggerButton, true, 'Saving...');
 
     const response = await fetch(`/api/calendar/oauth/accounts/${calendarId}/primary`, {
-      method: 'PUT',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        user_email: USER_EMAIL,
+      }),
     });
 
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Failed to update the booking destination calendar');
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || 'Failed to update the booking destination calendar');
     }
 
     broadcastAvailabilityRefresh('booking_destination_updated');

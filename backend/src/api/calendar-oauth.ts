@@ -333,11 +333,7 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * Set the designated booking calendar.
- * PUT /api/calendar/oauth/accounts/:id/primary
- */
-router.put('/accounts/:id/primary', async (req: Request, res: Response): Promise<void> => {
+async function setPrimaryCalendarHandler(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
 
   if (!id) {
@@ -378,7 +374,15 @@ router.put('/accounts/:id/primary', async (req: Request, res: Response): Promise
     logger.error('Failed to set primary calendar:', errorMessage);
     res.status(500).json({ error: 'Failed to set booking destination calendar' });
   }
-});
+}
+
+/**
+ * Set the designated booking calendar.
+ * Supports both POST and PUT so the admin action works reliably behind proxies
+ * that mishandle non-POST write methods.
+ */
+router.post('/accounts/:id/primary', setPrimaryCalendarHandler);
+router.put('/accounts/:id/primary', setPrimaryCalendarHandler);
 
 /**
  * Disconnect Calendar
