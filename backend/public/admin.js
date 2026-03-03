@@ -9,6 +9,9 @@ let connectedCalendars = [];
 const MAX_CALENDARS = 7;
 const DEFAULT_WORKING_HOURS_TIMEZONE = 'America/New_York';
 const MAX_NOTIFICATION_REMINDERS = 5;
+let notificationSettingsState = null;
+let expandedNotificationReminders = new Set();
+let postMeetingDetailsExpanded = true;
 
 function resolveAdminUserEmail() {
   const searchParams = new URLSearchParams(window.location.search);
@@ -577,14 +580,13 @@ function updateDisplayWindowPreview(days, minimumNoticeMinutes = document.getEle
 async function loadDisplaySettings() {
   try {
     const response = await fetch(`/api/calendar/preferences?user_email=${encodeURIComponent(USER_EMAIL)}`);
+    const data = await readJsonResponse(response);
 
     if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null);
-      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
+      throw new Error(data?.error || `HTTP ${response.status}`);
     }
 
-    const data = await response.json();
-    const settings = data.settings || {};
+    const settings = data?.settings || {};
     const rangeInput = document.getElementById('display-window-days');
     const aiToggle = document.getElementById('ai-concierge-enabled');
     const minimumNoticeInput = document.getElementById('minimum-notice-minutes');
@@ -595,7 +597,7 @@ async function loadDisplaySettings() {
     updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
   } catch (error) {
     console.error('Failed to load display settings:', error);
-    showNotification('error', 'Failed to load booking display settings');
+    showNotification('error', error.message || 'Failed to load booking display settings');
   }
 }
 
@@ -651,10 +653,10 @@ async function saveDisplaySettings(event) {
       }),
     });
 
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Failed to save booking display settings');
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || 'Failed to save booking display settings');
     }
 
     document.getElementById('display-window-days').value =
@@ -730,91 +732,422 @@ function getDefaultNotificationSettings() {
   };
 }
 
-function renderNotificationSettings(settings) {
+function normalizeNotificationSettings(settings) {
+  const defaults = getDefaultNotificationSettings();
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const preMeeting = Array.isArray(source.preMeeting) ? source.preMeeting : [];
+  const postMeeting = source.postMeeting && typeof source.postMeeting === 'object'
+    ? source.postMeeting
+    : {};
+
+  return {
+    timezone:
+      typeof source.timezone === 'string' && source.timezone.trim()
+        ? source.timezone.trim()
+        : defaults.timezone,
+    preMeeting: Array.from({ length: MAX_NOTIFICATION_REMINDERS }, (_, index) => {
+      const fallback = defaults.preMeeting[index];
+      const reminder = preMeeting[index] && typeof preMeeting[index] === 'object'
+        ? preMeeting[index]
+        : {};
+
+      return {
+        id: reminder.id || fallback.id,
+        enabled: reminder.enabled === undefined ? fallback.enabled : Boolean(reminder.enabled),
+        minutesBefore: Math.max(
+          1,
+          Math.min(43200, parseIntegerInput(reminder.minutesBefore, fallback.minutesBefore))
+        ),
+        subjectTemplate:
+          typeof reminder.subjectTemplate === 'string'
+            ? reminder.subjectTemplate
+            : fallback.subjectTemplate,
+        bodyTemplate:
+          typeof reminder.bodyTemplate === 'string'
+            ? reminder.bodyTemplate
+            : fallback.bodyTemplate,
+      };
+    }),
+    postMeeting: {
+      enabled:
+        postMeeting.enabled === undefined
+          ? defaults.postMeeting.enabled
+          : Boolean(postMeeting.enabled),
+      minutesAfter: Math.max(
+        1,
+        Math.min(10080, parseIntegerInput(postMeeting.minutesAfter, defaults.postMeeting.minutesAfter))
+      ),
+      subjectTemplate:
+        typeof postMeeting.subjectTemplate === 'string'
+          ? postMeeting.subjectTemplate
+          : defaults.postMeeting.subjectTemplate,
+      bodyTemplate:
+        typeof postMeeting.bodyTemplate === 'string'
+          ? postMeeting.bodyTemplate
+          : defaults.postMeeting.bodyTemplate,
+    },
+  };
+}
+
+function formatNotificationLeadTime(minutesBefore) {
+  if (minutesBefore % 1440 === 0) {
+    const days = minutesBefore / 1440;
+    return `${days} day${days === 1 ? '' : 's'} before`;
+  }
+
+  if (minutesBefore % 60 === 0) {
+    const hours = minutesBefore / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'} before`;
+  }
+
+  return `${minutesBefore} minute${minutesBefore === 1 ? '' : 's'} before`;
+}
+
+function getNextHiddenNotificationIndex() {
+  if (!notificationSettingsState) {
+    return -1;
+  }
+
+  return notificationSettingsState.preMeeting.findIndex((reminder) => !reminder.enabled);
+}
+
+function renderNotificationReminderCards() {
   const container = document.getElementById('notification-reminders-grid');
-  const normalized = settings || getDefaultNotificationSettings();
-  const reminders = Array.from({ length: MAX_NOTIFICATION_REMINDERS }, (_, index) => {
-    return normalized.preMeeting[index] || getDefaultNotificationSettings().preMeeting[index];
-  });
 
-  container.innerHTML = reminders.map((reminder, index) => `
-    <div class="notification-config-card">
-      <div class="notification-config-header">
-        <h5>Reminder ${index + 1}</h5>
-        <label class="day-toggle">
-          <input type="checkbox" id="notification-enabled-${index}" ${reminder.enabled ? 'checked' : ''}>
-          <span class="text-small">Enabled</span>
-        </label>
-      </div>
+  if (!container || !notificationSettingsState) {
+    return;
+  }
 
-      <div class="notification-config-row">
-        <div>
-          <label class="form-label" for="notification-minutes-${index}">Minutes Before Meeting</label>
-          <input type="number" id="notification-minutes-${index}" class="form-input" min="1" max="43200" value="${reminder.minutesBefore}">
+  const visibleReminderIndexes = notificationSettingsState.preMeeting
+    .map((reminder, index) => ({ reminder, index }))
+    .filter(({ reminder }) => reminder.enabled)
+    .map(({ index }) => index);
+
+  const cardsHtml = visibleReminderIndexes.map((index) => {
+    const reminder = notificationSettingsState.preMeeting[index];
+    const isExpanded = expandedNotificationReminders.has(reminder.id);
+
+    return `
+      <div class="notification-config-card">
+        <div class="notification-config-header">
+          <div>
+            <h5>Reminder ${index + 1}</h5>
+            <div class="text-small notification-card-meta">${formatNotificationLeadTime(reminder.minutesBefore)}</div>
+          </div>
+          <div class="notification-card-toolbar">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              data-reminder-toggle="${index}"
+            >
+              ${isExpanded ? 'Collapse' : 'Expand'}
+            </button>
+            <label class="day-toggle">
+              <input
+                type="checkbox"
+                data-reminder-index="${index}"
+                data-reminder-field="enabled"
+                ${reminder.enabled ? 'checked' : ''}
+              >
+              <span class="text-small">Enabled</span>
+            </label>
+          </div>
         </div>
-        <div>
-          <label class="form-label" for="notification-subject-${index}">Subject Template</label>
-          <input type="text" id="notification-subject-${index}" class="form-input" value="${escapeHtml(reminder.subjectTemplate)}">
+
+        <div class="notification-card-body ${isExpanded ? '' : 'hidden'}">
+          <div class="notification-config-row">
+            <div>
+              <label class="form-label" for="notification-minutes-${index}">Minutes Before Meeting</label>
+              <input
+                type="number"
+                id="notification-minutes-${index}"
+                class="form-input"
+                min="1"
+                max="43200"
+                value="${reminder.minutesBefore}"
+                data-reminder-index="${index}"
+                data-reminder-field="minutesBefore"
+              >
+            </div>
+            <div>
+              <label class="form-label" for="notification-subject-${index}">Subject Template</label>
+              <input
+                type="text"
+                id="notification-subject-${index}"
+                class="form-input"
+                value="${escapeHtml(reminder.subjectTemplate)}"
+                data-reminder-index="${index}"
+                data-reminder-field="subjectTemplate"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label" for="notification-body-${index}">Body Template</label>
+            <textarea
+              id="notification-body-${index}"
+              class="form-textarea"
+              style="min-height: 120px;"
+              data-reminder-index="${index}"
+              data-reminder-field="bodyTemplate"
+            >${escapeHtml(reminder.bodyTemplate)}</textarea>
+          </div>
         </div>
       </div>
+    `;
+  }).join('');
 
-      <div style="margin-top: 1rem;">
-        <label class="form-label" for="notification-body-${index}">Body Template</label>
-        <textarea id="notification-body-${index}" class="form-textarea" style="min-height: 120px;">${escapeHtml(reminder.bodyTemplate)}</textarea>
+  const addNotificationButton = getNextHiddenNotificationIndex() >= 0
+    ? `
+      <div class="notification-add-row">
+        <button type="button" id="add-notification-btn" class="btn btn-secondary notification-add-btn">
+          + Add a Notification
+        </button>
       </div>
-    </div>
-  `).join('');
+    `
+    : '';
 
-  document.getElementById('notification-timezone').value = normalized.timezone || DEFAULT_WORKING_HOURS_TIMEZONE;
-  document.getElementById('post-enabled').checked = normalized.postMeeting?.enabled === true;
-  document.getElementById('post-minutes-after').value = normalized.postMeeting?.minutesAfter || 5;
-  document.getElementById('post-subject-template').value = normalized.postMeeting?.subjectTemplate || '';
-  document.getElementById('post-body-template').value = normalized.postMeeting?.bodyTemplate || '';
+  const emptyState = visibleReminderIndexes.length === 0
+    ? `
+      <div class="notification-empty-state">
+        No pre-meeting reminders are active right now. Add one when you want customers to receive a scheduled reminder.
+      </div>
+    `
+    : '';
+
+  container.innerHTML = `${emptyState}${cardsHtml}${addNotificationButton}`;
+}
+
+function syncPostMeetingCardUI() {
+  const details = document.getElementById('post-notification-details');
+  const toggleButton = document.getElementById('toggle-post-notification-btn');
+
+  if (!details || !toggleButton) {
+    return;
+  }
+
+  details.classList.toggle('hidden', !postMeetingDetailsExpanded);
+  toggleButton.textContent = postMeetingDetailsExpanded ? 'Collapse' : 'Expand';
+}
+
+function renderNotificationSettings(settings) {
+  notificationSettingsState = normalizeNotificationSettings(settings);
+  expandedNotificationReminders = new Set(
+    notificationSettingsState.preMeeting
+      .filter((reminder) => reminder.enabled)
+      .map((reminder) => reminder.id)
+  );
+  postMeetingDetailsExpanded = true;
+
+  renderNotificationReminderCards();
+  document.getElementById('notification-timezone').value =
+    notificationSettingsState.timezone || DEFAULT_WORKING_HOURS_TIMEZONE;
+  document.getElementById('post-enabled').checked =
+    notificationSettingsState.postMeeting?.enabled === true;
+  document.getElementById('post-minutes-after').value =
+    notificationSettingsState.postMeeting?.minutesAfter || 5;
+  document.getElementById('post-subject-template').value =
+    notificationSettingsState.postMeeting?.subjectTemplate || '';
+  document.getElementById('post-body-template').value =
+    notificationSettingsState.postMeeting?.bodyTemplate || '';
+  syncPostMeetingCardUI();
+}
+
+function handleNotificationReminderGridClick(event) {
+  if (!notificationSettingsState) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+
+  if (!target) {
+    return;
+  }
+
+  const addButton = target.closest('#add-notification-btn');
+  if (addButton) {
+    const nextIndex = getNextHiddenNotificationIndex();
+
+    if (nextIndex >= 0) {
+      const reminder = notificationSettingsState.preMeeting[nextIndex];
+      reminder.enabled = true;
+      expandedNotificationReminders.add(reminder.id);
+      renderNotificationReminderCards();
+    }
+
+    return;
+  }
+
+  const toggleButton = target.closest('[data-reminder-toggle]');
+  if (!toggleButton) {
+    return;
+  }
+
+  const reminderIndex = parseInt(toggleButton.dataset.reminderToggle, 10);
+  const reminder = notificationSettingsState.preMeeting[reminderIndex];
+
+  if (!reminder) {
+    return;
+  }
+
+  if (expandedNotificationReminders.has(reminder.id)) {
+    expandedNotificationReminders.delete(reminder.id);
+  } else {
+    expandedNotificationReminders.add(reminder.id);
+  }
+
+  renderNotificationReminderCards();
+}
+
+function handleNotificationReminderFieldChange(event) {
+  if (!notificationSettingsState) {
+    return;
+  }
+
+  const target = event.target instanceof HTMLElement ? event.target : null;
+
+  if (!target) {
+    return;
+  }
+
+  const reminderIndex = parseInt(target.dataset?.reminderIndex, 10);
+  const field = target.dataset?.reminderField;
+
+  if (Number.isNaN(reminderIndex) || reminderIndex < 0 || reminderIndex >= MAX_NOTIFICATION_REMINDERS || !field) {
+    return;
+  }
+
+  const reminder = notificationSettingsState.preMeeting[reminderIndex];
+
+  if (!reminder) {
+    return;
+  }
+
+  if (field === 'enabled') {
+    reminder.enabled = target.checked;
+
+    if (reminder.enabled) {
+      expandedNotificationReminders.add(reminder.id);
+    } else {
+      expandedNotificationReminders.delete(reminder.id);
+    }
+
+    renderNotificationReminderCards();
+    return;
+  }
+
+  if (field === 'minutesBefore') {
+    reminder.minutesBefore = Math.max(1, Math.min(43200, parseIntegerInput(target.value, reminder.minutesBefore)));
+    return;
+  }
+
+  if (field === 'subjectTemplate') {
+    reminder.subjectTemplate = target.value;
+    return;
+  }
+
+  if (field === 'bodyTemplate') {
+    reminder.bodyTemplate = target.value;
+  }
 }
 
 async function loadNotificationSettings() {
   try {
     const response = await fetch(`/api/booking/notification-settings?user_email=${encodeURIComponent(USER_EMAIL)}`);
+    const data = await readJsonResponse(response);
 
     if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null);
-      throw new Error(errorPayload?.error || `HTTP ${response.status}`);
+      throw new Error(data?.error || `HTTP ${response.status}`);
     }
 
-    const data = await response.json();
-    renderNotificationSettings(data.settings || getDefaultNotificationSettings());
+    renderNotificationSettings(data?.settings || getDefaultNotificationSettings());
   } catch (error) {
     console.error('Failed to load notification settings:', error);
-    renderNotificationSettings(getDefaultNotificationSettings());
-    showNotification('error', 'Failed to load notification settings');
+    renderNotificationSettings(notificationSettingsState || getDefaultNotificationSettings());
+    showNotification('error', error.message || 'Failed to load notification settings');
   }
 }
 
 function setupNotificationSettingsForm() {
   const form = document.getElementById('notification-settings-form');
+  const remindersGrid = document.getElementById('notification-reminders-grid');
+  const timezoneInput = document.getElementById('notification-timezone');
+  const postToggle = document.getElementById('toggle-post-notification-btn');
+  const postEnabled = document.getElementById('post-enabled');
+  const postMinutesAfter = document.getElementById('post-minutes-after');
+  const postSubjectTemplate = document.getElementById('post-subject-template');
+  const postBodyTemplate = document.getElementById('post-body-template');
+
   form?.addEventListener('submit', saveNotificationSettings);
+  remindersGrid?.addEventListener('click', handleNotificationReminderGridClick);
+  remindersGrid?.addEventListener('input', handleNotificationReminderFieldChange);
+  remindersGrid?.addEventListener('change', handleNotificationReminderFieldChange);
+
+  timezoneInput?.addEventListener('change', () => {
+    if (notificationSettingsState) {
+      notificationSettingsState.timezone = timezoneInput.value || DEFAULT_WORKING_HOURS_TIMEZONE;
+    }
+  });
+
+  postToggle?.addEventListener('click', () => {
+    postMeetingDetailsExpanded = !postMeetingDetailsExpanded;
+    syncPostMeetingCardUI();
+  });
+
+  postEnabled?.addEventListener('change', () => {
+    if (notificationSettingsState) {
+      notificationSettingsState.postMeeting.enabled = postEnabled.checked;
+    }
+  });
+
+  postMinutesAfter?.addEventListener('input', () => {
+    if (notificationSettingsState) {
+      notificationSettingsState.postMeeting.minutesAfter = Math.max(
+        1,
+        Math.min(10080, parseIntegerInput(postMinutesAfter.value, notificationSettingsState.postMeeting.minutesAfter))
+      );
+    }
+  });
+
+  postSubjectTemplate?.addEventListener('input', () => {
+    if (notificationSettingsState) {
+      notificationSettingsState.postMeeting.subjectTemplate = postSubjectTemplate.value;
+    }
+  });
+
+  postBodyTemplate?.addEventListener('input', () => {
+    if (notificationSettingsState) {
+      notificationSettingsState.postMeeting.bodyTemplate = postBodyTemplate.value;
+    }
+  });
 }
 
 async function saveNotificationSettings(event) {
   event.preventDefault();
 
   const saveButton = document.getElementById('save-notification-settings-btn');
-  const reminders = Array.from({ length: MAX_NOTIFICATION_REMINDERS }, (_, index) => ({
-    id: `reminder_${index + 1}`,
-    enabled: document.getElementById(`notification-enabled-${index}`).checked,
-    minutesBefore: parseInt(document.getElementById(`notification-minutes-${index}`).value, 10) || 5,
-    subjectTemplate: document.getElementById(`notification-subject-${index}`).value.trim(),
-    bodyTemplate: document.getElementById(`notification-body-${index}`).value.trim(),
-  }));
+
+  if (!notificationSettingsState) {
+    notificationSettingsState = normalizeNotificationSettings(getDefaultNotificationSettings());
+  }
+
+  notificationSettingsState.timezone =
+    document.getElementById('notification-timezone').value || DEFAULT_WORKING_HOURS_TIMEZONE;
+  notificationSettingsState.postMeeting = {
+    enabled: document.getElementById('post-enabled').checked,
+    minutesAfter: Math.max(
+      1,
+      Math.min(10080, parseIntegerInput(document.getElementById('post-minutes-after').value, 5))
+    ),
+    subjectTemplate: document.getElementById('post-subject-template').value.trim(),
+    bodyTemplate: document.getElementById('post-body-template').value.trim(),
+  };
 
   const settings = {
-    timezone: document.getElementById('notification-timezone').value || DEFAULT_WORKING_HOURS_TIMEZONE,
-    preMeeting: reminders,
+    timezone: notificationSettingsState.timezone,
+    preMeeting: notificationSettingsState.preMeeting.map((reminder) => ({ ...reminder })),
     postMeeting: {
-      enabled: document.getElementById('post-enabled').checked,
-      minutesAfter: parseInt(document.getElementById('post-minutes-after').value, 10) || 5,
-      subjectTemplate: document.getElementById('post-subject-template').value.trim(),
-      bodyTemplate: document.getElementById('post-body-template').value.trim(),
+      ...notificationSettingsState.postMeeting,
     },
   };
 
@@ -830,10 +1163,10 @@ async function saveNotificationSettings(event) {
       }),
     });
 
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Failed to save notification settings');
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || 'Failed to save notification settings');
     }
 
     renderNotificationSettings(result.settings || settings);

@@ -120,6 +120,19 @@ function getFileBackedSettings(
   };
 }
 
+function getPersistedFileBackedSettings(
+  userEmail: string,
+  defaultDisplayWindowDays: number
+): AvailabilityDisplaySettings | null {
+  const store = readStore();
+
+  if (!store[userEmail]) {
+    return null;
+  }
+
+  return getFileBackedSettings(userEmail, defaultDisplayWindowDays);
+}
+
 function saveFileBackedSettings(
   userEmail: string,
   settings: Partial<AvailabilityDisplaySettings>,
@@ -145,6 +158,32 @@ function saveFileBackedSettings(
   writeStore(store);
 
   return nextSettings;
+}
+
+function syncFileBackedSettings(
+  userEmail: string,
+  settings: AvailabilityDisplaySettings
+): AvailabilityDisplaySettings {
+  const store = readStore();
+  store[userEmail] = settings;
+  writeStore(store);
+
+  return settings;
+}
+
+function isUpdatedAtMoreRecent(candidateUpdatedAt: string, baselineUpdatedAt: string): boolean {
+  const candidateTimestamp = Date.parse(candidateUpdatedAt);
+  const baselineTimestamp = Date.parse(baselineUpdatedAt);
+
+  if (Number.isNaN(candidateTimestamp)) {
+    return false;
+  }
+
+  if (Number.isNaN(baselineTimestamp)) {
+    return true;
+  }
+
+  return candidateTimestamp > baselineTimestamp;
 }
 
 function isBookingDisplaySettingsMissing(
@@ -301,7 +340,8 @@ export async function getAvailabilityDisplaySettings(
   defaultDisplayWindowDays: number,
   options: AvailabilityDisplaySettingsOptions = {}
 ): Promise<AvailabilityDisplaySettings> {
-  const fallbackSettings = getFileBackedSettings(userEmail, defaultDisplayWindowDays);
+  const persistedFileSettings = getPersistedFileBackedSettings(userEmail, defaultDisplayWindowDays);
+  const fallbackSettings = persistedFileSettings || getFileBackedSettings(userEmail, defaultDisplayWindowDays);
 
   if (!supabase) {
     if (options.requirePersistentStore) {
@@ -343,7 +383,7 @@ export async function getAvailabilityDisplaySettings(
       });
 
       if (seeded) {
-        return seeded;
+        return syncFileBackedSettings(userEmail, seeded);
       }
 
       if (options.requirePersistentStore) {
@@ -354,7 +394,7 @@ export async function getAvailabilityDisplaySettings(
     return fallbackSettings;
   }
 
-  return {
+  const resolvedSettings = {
     displayWindowDays: clampDisplayWindowDays(
       data['display_window_days'],
       fallbackSettings.displayWindowDays
@@ -372,6 +412,15 @@ export async function getAvailabilityDisplaySettings(
         ? data['updated_at']
         : fallbackSettings.updatedAt,
   };
+
+  if (
+    persistedFileSettings
+    && isUpdatedAtMoreRecent(persistedFileSettings.updatedAt, resolvedSettings.updatedAt)
+  ) {
+    return persistedFileSettings;
+  }
+
+  return syncFileBackedSettings(userEmail, resolvedSettings);
 }
 
 export async function saveAvailabilityDisplaySettings(
@@ -393,19 +442,27 @@ export async function saveAvailabilityDisplaySettings(
 
   const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
   if (!tableStatus.ready) {
-    throw createPersistenceError(
-      tableStatus.reason || 'booking_display_settings table is unavailable'
-    );
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(
+        tableStatus.reason || 'booking_display_settings table is unavailable'
+      );
+    }
+
+    return fallbackSave();
   }
 
   const minimumNoticeColumnStatus = await ensureMinimumNoticeColumn(supabase);
   const supportsMinimumNotice = minimumNoticeColumnStatus.ready;
 
   if (!supportsMinimumNotice && settings.minimumNoticeMinutes !== undefined) {
-    throw createPersistenceError(
-      minimumNoticeColumnStatus.reason
-      || 'minimum_notice_minutes column is unavailable. Run migration 008_booking_display_minimum_notice.sql'
-    );
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(
+        minimumNoticeColumnStatus.reason
+        || 'minimum_notice_minutes column is unavailable. Run migration 008_booking_display_minimum_notice.sql'
+      );
+    }
+
+    return fallbackSave();
   }
 
   const existing = await getAvailabilityDisplaySettings(
@@ -413,7 +470,7 @@ export async function saveAvailabilityDisplaySettings(
     userEmail,
     defaultDisplayWindowDays,
     {
-      requirePersistentStore: true,
+      requirePersistentStore: options.requirePersistentStore === true,
       seedDefaults: true,
     }
   );
@@ -435,10 +492,14 @@ export async function saveAvailabilityDisplaySettings(
   });
 
   if (!persisted) {
-    throw createPersistenceError('failed to write settings to the database');
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('failed to write settings to the database');
+    }
+
+    return fallbackSave();
   }
 
-  return persisted;
+  return syncFileBackedSettings(userEmail, persisted);
 }
 
 export {

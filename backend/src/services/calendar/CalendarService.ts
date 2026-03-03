@@ -74,6 +74,13 @@ interface AvailabilityCacheEntry {
   expiresAt: Date;
 }
 
+interface WorkingHoursRow {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  timezone?: string | null;
+}
+
 export class CalendarService {
   private providers: Map<string, ICalendarProvider> = new Map();
   private availabilityCache: Map<string, AvailabilityCacheEntry> = new Map();
@@ -116,6 +123,30 @@ export class CalendarService {
       dayOfWeek: weekdayMap[weekday] ?? 0,
       time: `${hour}:${minute}:${second}`,
     };
+  }
+
+  private async getActiveWorkingHours(userEmail: string): Promise<WorkingHoursRow[] | null> {
+    try {
+      const { data: workingHours, error } = await this.supabase
+        .from('working_hours')
+        .select('*')
+        .eq('user_email', userEmail)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('Failed to fetch working hours:', error);
+        return null;
+      }
+
+      if (!workingHours || workingHours.length === 0) {
+        return [];
+      }
+
+      return workingHours;
+    } catch (error) {
+      console.error('Error fetching working hours:', error);
+      return null;
+    }
   }
 
   constructor(
@@ -232,6 +263,13 @@ export class CalendarService {
 
     const bookingProvider =
       this.bookingProviderId ? this.providers.get(this.bookingProviderId) : undefined;
+    const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
+    const configuredWorkingHours = await this.getActiveWorkingHours(userEmail);
+    const shouldGenerateFullDaySlots =
+      Array.isArray(configuredWorkingHours) && configuredWorkingHours.length > 0;
+    const providerWorkingHours = shouldGenerateFullDaySlots
+      ? { start: '00:00', end: '23:59' }
+      : options.workingHours;
 
     let availabilitySourceDescription = `${this.providers.size} calendar(s) in parallel`;
     let candidateSlots: TimeSlot[] = [];
@@ -242,7 +280,7 @@ export class CalendarService {
         startDate: options.startDate,
         endDate: options.endDate,
         durationMinutes: options.durationMinutes,
-        workingHours: options.workingHours,
+        workingHours: providerWorkingHours,
         bufferMinutes: options.bufferMinutes,
         slotIntervalMinutes: options.slotIntervalMinutes,
       });
@@ -253,7 +291,7 @@ export class CalendarService {
             startDate: options.startDate,
             endDate: options.endDate,
             durationMinutes: options.durationMinutes,
-            workingHours: options.workingHours,
+            workingHours: providerWorkingHours,
             bufferMinutes: options.bufferMinutes,
             slotIntervalMinutes: options.slotIntervalMinutes,
           })
@@ -266,9 +304,12 @@ export class CalendarService {
     console.log(`Fetching availability from ${availabilitySourceDescription}...`);
 
     // Apply availability controls: blackouts and working hours
-    const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
     const filteredByBlackouts = await this.filterByBlackouts(candidateSlots, userEmail, options.startDate, options.endDate);
-    const filteredByWorkingHours = await this.filterByWorkingHours(filteredByBlackouts, userEmail);
+    const filteredByWorkingHours = await this.filterByWorkingHours(
+      filteredByBlackouts,
+      userEmail,
+      configuredWorkingHours ?? undefined
+    );
     const finalSlots = filteredByWorkingHours.filter((slot) => slot.start >= options.startDate);
 
     // Cache the result
@@ -533,6 +574,10 @@ export class CalendarService {
    */
   getProviders(): ICalendarProvider[] {
     return Array.from(this.providers.values());
+  }
+
+  getAvailabilityUserEmail(): string | null {
+    return this.availabilityUserEmail;
   }
 
   /**
@@ -1077,20 +1122,14 @@ export class CalendarService {
    */
   private async filterByWorkingHours(
     slots: TimeSlot[],
-    userEmail: string
+    userEmail: string,
+    preloadedWorkingHours?: WorkingHoursRow[]
   ): Promise<TimeSlot[]> {
     try {
-      // Fetch working hours for this user
-      const { data: workingHours, error } = await this.supabase
-        .from('working_hours')
-        .select('*')
-        .eq('user_email', userEmail)
-        .eq('is_active', true);
+      let workingHours = preloadedWorkingHours;
 
-      if (error) {
-        console.error('Failed to fetch working hours:', error);
-        // On error, return all slots (fail open)
-        return slots;
+      if (!workingHours) {
+        workingHours = await this.getActiveWorkingHours(userEmail) ?? undefined;
       }
 
       if (!workingHours || workingHours.length === 0) {

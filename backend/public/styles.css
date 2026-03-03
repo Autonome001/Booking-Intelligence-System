@@ -1348,6 +1348,40 @@ body::before {
   gap: 1rem;
 }
 
+.admin-page .notification-card-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.admin-page .notification-card-meta {
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+}
+
+.admin-page .notification-card-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-page .notification-empty-state {
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-lg);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+}
+
+.admin-page .notification-add-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.admin-page .notification-add-btn {
+  min-width: 0;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .brand-name {

@@ -896,7 +896,6 @@ router.get('/notification-settings', async (req: Request, res: Response): Promis
     const userEmail = resolveAdminUserEmail(req.query['user_email']);
     const supabase = await serviceManager.getService<SupabaseClient>('supabase');
     const settings = await getMeetingNotificationSettings(supabase, userEmail, {
-      requirePersistentStore: true,
       seedDefaults: true,
     });
 
@@ -933,7 +932,7 @@ router.put('/notification-settings', async (req: Request, res: Response): Promis
     }
 
     const settings = await saveMeetingNotificationSettings(supabase, userEmail, payload, {
-      requirePersistentStore: true,
+      requirePersistentStore: false,
     });
 
     res.json({

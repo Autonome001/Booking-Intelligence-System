@@ -11,7 +11,9 @@ let isBookingChatLoading = false;
 let bookingSessionId = `booking_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 let selectedHoldId = null;
 let isSlotSelectionPending = false;
+const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
 const AVAILABILITY_REFRESH_STORAGE_KEY = 'autonome_availability_refresh';
+const BOOKING_USER_EMAIL = resolveBookingUserEmail();
 
 // ============================================
 // INITIALIZATION
@@ -27,6 +29,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAvailabilityAutoRefresh();
   await checkAvailabilityFeatureFlag();
 });
+
+function resolveBookingUserEmail() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryUserEmail = searchParams.get('user_email')?.trim();
+  const bodyUserEmail = document.body?.dataset?.userEmail?.trim();
+  const storedUserEmail = window.localStorage.getItem(ADMIN_USER_EMAIL_STORAGE_KEY)?.trim();
+
+  return queryUserEmail || bodyUserEmail || storedUserEmail || null;
+}
+
+function appendBookingUserEmail(path) {
+  if (!BOOKING_USER_EMAIL) {
+    return path;
+  }
+
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}user_email=${encodeURIComponent(BOOKING_USER_EMAIL)}`;
+}
 
 function applyDisplayMode() {
   const isEmbedded = window.location.pathname === '/embed'
@@ -52,7 +72,7 @@ function setSubmitButtonPending(isPending) {
 // ============================================
 async function checkAvailabilityFeatureFlag() {
   try {
-    const response = await fetch('/api/calendar/config/show-slots', {
+    const response = await fetch(appendBookingUserEmail('/api/calendar/config/show-slots'), {
       cache: 'no-store',
     });
     const data = await response.json();
@@ -95,9 +115,14 @@ async function fetchAvailability(weekOffset) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + (weekOffset * 7));
 
-    const response = await fetch(`/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`, {
-      cache: 'no-store',
-    });
+    const response = await fetch(
+      appendBookingUserEmail(
+        `/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`
+      ),
+      {
+        cache: 'no-store',
+      }
+    );
     const data = await response.json();
 
     const weekEnd = new Date(startDate);
@@ -173,6 +198,7 @@ async function reserveSelectedSlot(slot) {
       slot_start: slot.start,
       slot_end: slot.end,
       expiration_minutes: 15,
+      ...(BOOKING_USER_EMAIL ? { user_email: BOOKING_USER_EMAIL } : {}),
     }),
   });
 
@@ -434,6 +460,7 @@ async function sendBookingChatMessage() {
       body: JSON.stringify({
         message,
         history: bookingChatHistory,
+        ...(BOOKING_USER_EMAIL ? { user_email: BOOKING_USER_EMAIL } : {}),
         duration_minutes: 30,
       }),
     });

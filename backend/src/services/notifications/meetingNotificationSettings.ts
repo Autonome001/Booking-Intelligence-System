@@ -228,6 +228,16 @@ function getFileBackedSettings(userEmail: string): MeetingNotificationSettings {
   return sanitizeSettings(storedSettings);
 }
 
+function getPersistedFileBackedSettings(userEmail: string): MeetingNotificationSettings | null {
+  const store = readStore();
+
+  if (!store[userEmail]) {
+    return null;
+  }
+
+  return sanitizeSettings(store[userEmail]);
+}
+
 function saveFileBackedSettings(
   userEmail: string,
   settings: Partial<MeetingNotificationSettings>
@@ -246,6 +256,32 @@ function saveFileBackedSettings(
   writeStore(store);
 
   return nextSettings;
+}
+
+function syncFileBackedSettings(
+  userEmail: string,
+  settings: MeetingNotificationSettings
+): MeetingNotificationSettings {
+  const store = readStore();
+  store[userEmail] = settings;
+  writeStore(store);
+
+  return settings;
+}
+
+function isUpdatedAtMoreRecent(candidateUpdatedAt: string, baselineUpdatedAt: string): boolean {
+  const candidateTimestamp = Date.parse(candidateUpdatedAt);
+  const baselineTimestamp = Date.parse(baselineUpdatedAt);
+
+  if (Number.isNaN(candidateTimestamp)) {
+    return false;
+  }
+
+  if (Number.isNaN(baselineTimestamp)) {
+    return true;
+  }
+
+  return candidateTimestamp > baselineTimestamp;
 }
 
 function isMeetingNotificationSettingsMissing(error: PostgrestLikeError | null | undefined): boolean {
@@ -384,7 +420,8 @@ export async function getMeetingNotificationSettings(
   userEmail: string,
   options: MeetingNotificationSettingsOptions = {}
 ): Promise<MeetingNotificationSettings> {
-  const fallbackSettings = getFileBackedSettings(userEmail);
+  const persistedFileSettings = getPersistedFileBackedSettings(userEmail);
+  const fallbackSettings = persistedFileSettings || getFileBackedSettings(userEmail);
 
   if (!supabase) {
     if (options.requirePersistentStore) {
@@ -426,7 +463,7 @@ export async function getMeetingNotificationSettings(
       const seeded = await persistDatabaseBackedSettings(supabase, userEmail, fallbackSettings);
 
       if (seeded) {
-        return seeded;
+        return syncFileBackedSettings(userEmail, seeded);
       }
 
       if (options.requirePersistentStore) {
@@ -437,7 +474,7 @@ export async function getMeetingNotificationSettings(
     return fallbackSettings;
   }
 
-  return sanitizeSettings({
+  const resolvedSettings = sanitizeSettings({
     timezone: data.timezone || fallbackSettings.timezone,
     preMeeting: Array.isArray(data.pre_meeting) ? (data.pre_meeting as PreMeetingReminderConfig[]) : fallbackSettings.preMeeting,
     postMeeting:
@@ -446,6 +483,15 @@ export async function getMeetingNotificationSettings(
         : fallbackSettings.postMeeting,
     updatedAt: data.updated_at || fallbackSettings.updatedAt,
   });
+
+  if (
+    persistedFileSettings
+    && isUpdatedAtMoreRecent(persistedFileSettings.updatedAt, resolvedSettings.updatedAt)
+  ) {
+    return persistedFileSettings;
+  }
+
+  return syncFileBackedSettings(userEmail, resolvedSettings);
 }
 
 export async function saveMeetingNotificationSettings(
@@ -465,13 +511,17 @@ export async function saveMeetingNotificationSettings(
 
   const tableStatus = await ensureMeetingNotificationSettingsTable(supabase);
   if (!tableStatus.ready) {
-    throw createPersistenceError(
-      tableStatus.reason || 'meeting_notification_settings table is unavailable'
-    );
+    if (options.requirePersistentStore) {
+      throw createPersistenceError(
+        tableStatus.reason || 'meeting_notification_settings table is unavailable'
+      );
+    }
+
+    return fallbackSave();
   }
 
   const existing = await getMeetingNotificationSettings(supabase, userEmail, {
-    requirePersistentStore: true,
+    requirePersistentStore: options.requirePersistentStore === true,
     seedDefaults: true,
   });
   const nextSettings = sanitizeSettings({
@@ -485,10 +535,14 @@ export async function saveMeetingNotificationSettings(
   const persisted = await persistDatabaseBackedSettings(supabase, userEmail, nextSettings);
 
   if (!persisted) {
-    throw createPersistenceError('failed to write settings to the database');
+    if (options.requirePersistentStore) {
+      throw createPersistenceError('failed to write settings to the database');
+    }
+
+    return fallbackSave();
   }
 
-  return persisted;
+  return syncFileBackedSettings(userEmail, persisted);
 }
 
 export async function getAllMeetingNotificationSettings(

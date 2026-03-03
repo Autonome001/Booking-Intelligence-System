@@ -54,8 +54,8 @@ interface ConversationSignals {
   combinedText: string;
 }
 
-function resolveUserEmail(value: unknown): string {
-  return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_USER_EMAIL;
+function resolveUserEmail(value: unknown, fallbackUserEmail = DEFAULT_USER_EMAIL): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallbackUserEmail;
 }
 
 function formatSlotLabel(slot: CalendarSlotResponse): string {
@@ -440,7 +440,7 @@ async function getDisplaySettingsForUser(
     defaultDisplayWindowDays,
     {
       requirePersistentStore,
-      seedDefaults: requirePersistentStore,
+      seedDefaults: true,
     }
   );
 
@@ -464,7 +464,6 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
 
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const config = getSchedulingConfig();
-    const userEmail = resolveUserEmail(req.query['user_email']);
 
     if (!calendarService) {
       res.status(503).json({
@@ -474,6 +473,11 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       });
       return;
     }
+
+    const userEmail = resolveUserEmail(
+      req.query['user_email'],
+      calendarService.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+    );
 
     const durationMinutes = parseInt(req.query['duration'] as string) || config.defaultDuration;
     const validation = validateDuration(durationMinutes);
@@ -586,8 +590,11 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
     }
 
     const config = getSchedulingConfig();
-    const userEmail = resolveUserEmail(user_email);
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
+    const userEmail = resolveUserEmail(
+      user_email,
+      calendarService?.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+    );
     const { settings: displaySettings } = await getDisplaySettingsForUser(
       userEmail,
       config.defaultBookingWindowDays
@@ -752,7 +759,10 @@ router.post('/holds/selection', async (req: Request, res: Response): Promise<voi
     }
 
     const config = getSchedulingConfig();
-    const userEmail = resolveUserEmail(user_email);
+    const userEmail = resolveUserEmail(
+      user_email,
+      calendarService.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+    );
     const { settings: displaySettings } = await getDisplaySettingsForUser(
       userEmail,
       config.defaultBookingWindowDays
@@ -843,7 +853,11 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
 
   const enabled = process.env['SHOW_CALENDAR_SLOTS'] === 'true';
   const config = getSchedulingConfig();
-  const userEmail = resolveUserEmail(req.query['user_email']);
+  const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  const userEmail = resolveUserEmail(
+    req.query['user_email'],
+    calendarService?.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+  );
   const { settings: displaySettings } = await getDisplaySettingsForUser(
     userEmail,
     config.defaultBookingWindowDays
@@ -875,8 +889,7 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
     const userEmail = resolveUserEmail(req.query['user_email']);
     const { settings } = await getDisplaySettingsForUser(
       userEmail,
-      config.defaultBookingWindowDays,
-      true
+      config.defaultBookingWindowDays
     );
 
     res.json({
@@ -949,7 +962,7 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       },
       config.defaultBookingWindowDays,
       {
-        requirePersistentStore: true,
+        requirePersistentStore: false,
       }
     );
 
