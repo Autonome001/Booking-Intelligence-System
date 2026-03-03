@@ -589,10 +589,12 @@ async function loadDisplaySettings() {
     const settings = data?.settings || {};
     const rangeInput = document.getElementById('display-window-days');
     const aiToggle = document.getElementById('ai-concierge-enabled');
+    const discoveryToggle = document.getElementById('discovery-mode-enabled');
     const minimumNoticeInput = document.getElementById('minimum-notice-minutes');
 
     rangeInput.value = settings.displayWindowDays || 20;
     aiToggle.checked = settings.aiConciergeEnabled !== false;
+    discoveryToggle.checked = settings.discoveryModeEnabled !== false;
     minimumNoticeInput.value = settings.minimumNoticeMinutes ?? 30;
     updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
   } catch (error) {
@@ -637,6 +639,7 @@ async function saveDisplaySettings(event) {
   const saveButton = document.getElementById('save-display-settings-btn');
   const displayWindowDays = parseInt(document.getElementById('display-window-days').value, 10);
   const aiConciergeEnabled = document.getElementById('ai-concierge-enabled').checked;
+  const discoveryModeEnabled = document.getElementById('discovery-mode-enabled').checked;
   const minimumNoticeMinutes = parseInt(document.getElementById('minimum-notice-minutes').value, 10);
 
   setButtonLoading(saveButton, true, 'Saving...');
@@ -649,6 +652,7 @@ async function saveDisplaySettings(event) {
         user_email: USER_EMAIL,
         display_window_days: displayWindowDays,
         ai_concierge_enabled: aiConciergeEnabled,
+        discovery_mode_enabled: discoveryModeEnabled,
         minimum_notice_minutes: minimumNoticeMinutes,
       }),
     });
@@ -665,6 +669,8 @@ async function saveDisplaySettings(event) {
       result.settings?.minimumNoticeMinutes ?? minimumNoticeMinutes;
     document.getElementById('ai-concierge-enabled').checked =
       result.settings?.aiConciergeEnabled !== false;
+    document.getElementById('discovery-mode-enabled').checked =
+      result.settings?.discoveryModeEnabled !== false;
 
     updateDisplayWindowPreview(
       result.settings?.displayWindowDays || displayWindowDays,

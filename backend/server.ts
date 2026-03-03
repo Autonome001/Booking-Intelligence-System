@@ -14,6 +14,7 @@ import calendarOAuthRouter from './src/api/calendar-oauth.js';
 import calendarWebhookRouter from './src/api/calendar-webhook.js';
 import calendarAvailabilityRouter from './src/api/calendar-availability.js';
 import calendarAvailabilityControlsRouter from './src/api/calendar-availability-controls.js';
+import tavusWebhookRouter from './src/api/tavus-webhook.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -225,7 +226,23 @@ async function initializeServices(): Promise<ServiceInitResults> {
     logger.error('❌ Calendar service registration failed:', errorMessage);
   }
 
-  logger.info(`Service registration summary: ${results.success.length}/${services.length} successful`);
+  // Tavus service
+  try {
+    serviceManager.registerService('tavus', async () => {
+      const { TavusService } = await import('./src/services/TavusService.js');
+      const config = getServiceConfig('tavus');
+      return new TavusService(config.apiKey);
+    });
+    results.success.push('tavus');
+    logger.info('✅ Tavus service registered');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    results.failed.push({ service: 'tavus', error: errorMessage });
+    logger.error('❌ Tavus service registration failed:', errorMessage);
+  }
+
+  const totalServices = services.length + 1; // +1 for tavus since I didn't update the array at the top
+  logger.info(`Service registration summary: ${results.success.length}/${totalServices} successful`);
 
   if (results.failed.length > 0) {
     logger.warn('Failed services:', results.failed.map((f) => f.service).join(', '));
@@ -250,6 +267,9 @@ app.use('/api/calendar/oauth', calendarOAuthRouter);
 
 // Calendar webhook endpoint
 app.use('/api/calendar/webhook', calendarWebhookRouter);
+
+// Tavus webhook endpoint
+app.use('/api/tavus/webhook', tavusWebhookRouter);
 
 // Calendar availability API
 app.use('/api/calendar', calendarAvailabilityRouter);

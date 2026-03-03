@@ -16,6 +16,9 @@ import {
   type MeetingNotificationSettings,
 } from '../services/notifications/meetingNotificationSettings.js';
 import type { CalendarService } from '../services/calendar/CalendarService.js';
+import { getAvailabilityDisplaySettings } from '../services/calendar/availabilityDisplaySettings.js';
+import { TavusService } from '../services/TavusService.js';
+import { getConfigSection } from '../../../src/config/loader.js';
 import type { BookingResponse } from '../../../src/types/index.js';
 
 const router: Router = express.Router();
@@ -863,6 +866,60 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
         );
         (result as Record<string, unknown>)['confirmation_email_sent'] = emailReceipt.accepted;
         (result as Record<string, unknown>)['confirmation_email_id'] = emailReceipt.messageId;
+
+        // --- Tavus Integration Trigger ---
+        if (calendarConfirmation?.confirmed) {
+          const tavusConfig = getConfigSection('tavus');
+          const bookingInquiry = result as any;
+
+          // Determine if Tavus should be triggered
+          // Tier check
+          const tier = (bookingInquiry.ai_analysis?.customer_tier || 'Basic') as 'Basic' | 'Professional' | 'Enterprise';
+          const allowedTiers = tavusConfig.trigger_conditions.customer_tier || ['Professional', 'Enterprise'];
+
+          // Duration check
+          const duration = bookingInquiry.meeting_duration || 30;
+          const minDuration = tavusConfig.trigger_conditions.meeting_duration_above ?? 14;
+
+          // Admin Discovery Mode check
+          const supabase = await serviceManager.getService<SupabaseClient>('supabase');
+          const displaySettings = await getAvailabilityDisplaySettings(supabase, DEFAULT_ADMIN_USER_EMAIL, 20);
+          const discoveryModeEnabled = displaySettings.discoveryModeEnabled;
+
+          if (tavusConfig.enabled && discoveryModeEnabled && allowedTiers.includes(tier) && duration > minDuration) {
+            logger.info(`Triggering Tavus video generation for ${requestId} (${tier}, ${duration}min)`);
+
+            try {
+              const tavusService = await serviceManager.getService<TavusService>('tavus');
+              if (tavusService) {
+                // Generate script
+                const script = `Hi ${bookingData.name}, thank you for booking a ${duration} minute consultation with Autonome. I'm looking forward to discussing your ${tier} needs and how we can help with ${bookingInquiry.ai_analysis?.key_needs_summary || 'your business automation'}. See you soon!`;
+
+                const tavusResult = await tavusService.createVideo({
+                  replica_id: tavusConfig.video_settings.replica_id,
+                  script,
+                  background_url: tavusConfig.video_settings.background_url,
+                  video_name: `Intro for ${bookingData.name} - ${requestId}`,
+                });
+
+                // Update database with Tavus info
+                if (supabase) {
+                  await supabase.from('booking_inquiries').update({
+                    tavus_video_id: tavusResult.video_id,
+                    tavus_video_status: tavusResult.status,
+                    tavus_video_url: tavusResult.video_url,
+                  }).eq('processing_id', requestId);
+                }
+
+                (result as any).tavus_video_triggered = true;
+                (result as any).tavus_video_id = tavusResult.video_id;
+              }
+            } catch (tavusError) {
+              logger.error(`Tavus video generation failed for ${requestId}:`, tavusError);
+            }
+          }
+        }
+        // ---------------------------------
       } catch (error) {
         const emailError = error instanceof Error ? error.message : 'Unknown error';
         logger.error(`Customer confirmation email failed for ${requestId}: ${emailError}`);

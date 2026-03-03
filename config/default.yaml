@@ -196,8 +196,8 @@ tavus:
 
   # Trigger conditions
   trigger_conditions:
-    customer_tier: ["Professional", "Enterprise"]
-    meeting_duration_above: 30
+    customer_tier: ["Basic", "Professional", "Enterprise"]
+    meeting_duration_above: 14
 
   # Video settings
   video_settings:

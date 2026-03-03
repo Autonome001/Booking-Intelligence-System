@@ -659,13 +659,13 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
 
     const chatHistory: ChatMessage[] = Array.isArray(history)
       ? history
-          .filter(
-            (entry): entry is ChatMessage =>
-              entry &&
-              (entry.role === 'user' || entry.role === 'assistant') &&
-              typeof entry.content === 'string'
-          )
-          .slice(-6)
+        .filter(
+          (entry): entry is ChatMessage =>
+            entry &&
+            (entry.role === 'user' || entry.role === 'assistant') &&
+            typeof entry.content === 'string'
+        )
+        .slice(-6)
       : [];
 
     const chatSearchWindowDays = Math.min(
@@ -920,7 +920,7 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
 router.put('/preferences', async (req: Request, res: Response): Promise<void> => {
   try {
     const config = getSchedulingConfig();
-    const { user_email, display_window_days, ai_concierge_enabled, minimum_notice_minutes } = req.body ?? {};
+    const { user_email, display_window_days, ai_concierge_enabled, discovery_mode_enabled, minimum_notice_minutes } = req.body ?? {};
     const userEmail = resolveUserEmail(user_email);
 
     if (
@@ -957,6 +957,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         displayWindowDays: display_window_days,
         aiConciergeEnabled:
           typeof ai_concierge_enabled === 'boolean' ? ai_concierge_enabled : undefined,
+        discoveryModeEnabled:
+          typeof discovery_mode_enabled === 'boolean' ? discovery_mode_enabled : undefined,
         minimumNoticeMinutes:
           Number.isInteger(minimum_notice_minutes) ? minimum_notice_minutes : undefined,
       },

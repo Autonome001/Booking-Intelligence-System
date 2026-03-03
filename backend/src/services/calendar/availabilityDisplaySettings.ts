@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface AvailabilityDisplaySettings {
   displayWindowDays: number;
   aiConciergeEnabled: boolean;
+  discoveryModeEnabled: boolean;
   minimumNoticeMinutes: number;
   updatedAt: string;
 }
@@ -23,23 +24,29 @@ interface PostgrestLikeError {
 
 const MISSING_TABLE_CODE = 'PGRST205';
 const MISSING_COLUMN_CODE = 'PGRST204';
-const MIN_DISPLAY_DAYS = 7;
-const MAX_DISPLAY_DAYS = 60;
-const MIN_MINIMUM_NOTICE_MINUTES = 0;
-const MAX_MINIMUM_NOTICE_MINUTES = 24 * 60;
+export const MIN_DISPLAY_DAYS = 7;
+export const MAX_DISPLAY_DAYS = 60;
+export const MIN_MINIMUM_NOTICE_MINUTES = 0;
+export const MAX_MINIMUM_NOTICE_MINUTES = 24 * 60;
+
 const BOOKING_DISPLAY_SETTINGS_BOOTSTRAP_SQL = `
 CREATE TABLE IF NOT EXISTS booking_display_settings (
   user_email TEXT PRIMARY KEY,
   display_window_days INTEGER NOT NULL DEFAULT 20 CHECK (display_window_days BETWEEN 7 AND 60),
   ai_concierge_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  discovery_mode_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   minimum_notice_minutes INTEGER NOT NULL DEFAULT 30 CHECK (minimum_notice_minutes BETWEEN 0 AND 1440),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 `;
-const BOOKING_DISPLAY_SETTINGS_MINIMUM_NOTICE_SQL = `
+
+const BOOKING_DISPLAY_SETTINGS_MIGRATION_SQL = `
 ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS minimum_notice_minutes INTEGER NOT NULL DEFAULT 30 CHECK (minimum_notice_minutes BETWEEN 0 AND 1440);
+
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS discovery_mode_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 `;
 
 function getSettingsFilePath(): string {
@@ -115,6 +122,7 @@ function getFileBackedSettings(
   return {
     displayWindowDays: clampDisplayWindowDays(storedSettings?.displayWindowDays, sanitizedDefault),
     aiConciergeEnabled: storedSettings?.aiConciergeEnabled ?? true,
+    discoveryModeEnabled: storedSettings?.discoveryModeEnabled ?? true,
     minimumNoticeMinutes: clampMinimumNoticeMinutes(storedSettings?.minimumNoticeMinutes, 30),
     updatedAt: storedSettings?.updatedAt || new Date().toISOString(),
   };
@@ -147,6 +155,7 @@ function saveFileBackedSettings(
       existing.displayWindowDays
     ),
     aiConciergeEnabled: settings.aiConciergeEnabled ?? existing.aiConciergeEnabled,
+    discoveryModeEnabled: settings.discoveryModeEnabled ?? existing.discoveryModeEnabled,
     minimumNoticeMinutes: clampMinimumNoticeMinutes(
       settings.minimumNoticeMinutes ?? existing.minimumNoticeMinutes,
       existing.minimumNoticeMinutes
@@ -247,20 +256,31 @@ async function ensureBookingDisplaySettingsTable(
   return { ready: true, repaired: true };
 }
 
-async function ensureMinimumNoticeColumn(
+async function ensureNecessaryColumns(
   supabase: SupabaseClient
 ): Promise<{ ready: boolean; repaired: boolean; reason?: string }> {
-  const probe = await supabase
+  // Check for minimum_notice_minutes column
+  const probeNotice = await supabase
     .from('booking_display_settings')
     .select('minimum_notice_minutes')
     .limit(1);
 
-  if (!isBookingDisplaySettingsColumnMissing(probe.error, 'minimum_notice_minutes')) {
+  const noticeMissing = isBookingDisplaySettingsColumnMissing(probeNotice.error, 'minimum_notice_minutes');
+
+  // Check for discovery_mode_enabled column
+  const probeDiscovery = await supabase
+    .from('booking_display_settings')
+    .select('discovery_mode_enabled')
+    .limit(1);
+
+  const discoveryMissing = isBookingDisplaySettingsColumnMissing(probeDiscovery.error, 'discovery_mode_enabled');
+
+  if (!noticeMissing && !discoveryMissing) {
     return { ready: true, repaired: false };
   }
 
   const migration = await supabase.rpc('exec_sql', {
-    sql: BOOKING_DISPLAY_SETTINGS_MINIMUM_NOTICE_SQL,
+    sql: BOOKING_DISPLAY_SETTINGS_MIGRATION_SQL,
   });
 
   if (migration.error) {
@@ -273,7 +293,7 @@ async function ensureMinimumNoticeColumn(
 
   const verify = await supabase
     .from('booking_display_settings')
-    .select('minimum_notice_minutes')
+    .select('minimum_notice_minutes, discovery_mode_enabled')
     .limit(1);
 
   if (verify.error) {
@@ -291,7 +311,7 @@ async function persistDatabaseBackedSettings(
   supabase: SupabaseClient,
   userEmail: string,
   nextSettings: AvailabilityDisplaySettings,
-  options: { includeMinimumNoticeMinutes: boolean }
+  options: { includeExtendedColumns: boolean }
 ): Promise<AvailabilityDisplaySettings | null> {
   const payload: Record<string, unknown> = {
     user_email: userEmail,
@@ -300,8 +320,9 @@ async function persistDatabaseBackedSettings(
     updated_at: nextSettings.updatedAt,
   };
 
-  if (options.includeMinimumNoticeMinutes) {
+  if (options.includeExtendedColumns) {
     payload['minimum_notice_minutes'] = nextSettings.minimumNoticeMinutes;
+    payload['discovery_mode_enabled'] = nextSettings.discoveryModeEnabled;
   }
 
   const { data, error } = await supabase
@@ -323,6 +344,10 @@ async function persistDatabaseBackedSettings(
       typeof data['ai_concierge_enabled'] === 'boolean'
         ? data['ai_concierge_enabled']
         : nextSettings.aiConciergeEnabled,
+    discoveryModeEnabled:
+      typeof data['discovery_mode_enabled'] === 'boolean'
+        ? data['discovery_mode_enabled']
+        : nextSettings.discoveryModeEnabled,
     minimumNoticeMinutes: clampMinimumNoticeMinutes(
       data['minimum_notice_minutes'],
       nextSettings.minimumNoticeMinutes
@@ -360,8 +385,8 @@ export async function getAvailabilityDisplaySettings(
     return fallbackSettings;
   }
 
-  const minimumNoticeColumnStatus = await ensureMinimumNoticeColumn(supabase);
-  const supportsMinimumNotice = minimumNoticeColumnStatus.ready;
+  const columnStatus = await ensureNecessaryColumns(supabase);
+  const supportsExtendedColumns = columnStatus.ready;
 
   const { data, error } = await supabase
     .from('booking_display_settings')
@@ -379,7 +404,7 @@ export async function getAvailabilityDisplaySettings(
   if (!data) {
     if (options.seedDefaults || options.requirePersistentStore) {
       const seeded = await persistDatabaseBackedSettings(supabase, userEmail, fallbackSettings, {
-        includeMinimumNoticeMinutes: supportsMinimumNotice,
+        includeExtendedColumns: supportsExtendedColumns,
       });
 
       if (seeded) {
@@ -403,8 +428,12 @@ export async function getAvailabilityDisplaySettings(
       typeof data['ai_concierge_enabled'] === 'boolean'
         ? data['ai_concierge_enabled']
         : fallbackSettings.aiConciergeEnabled,
+    discoveryModeEnabled:
+      typeof data['discovery_mode_enabled'] === 'boolean'
+        ? data['discovery_mode_enabled']
+        : fallbackSettings.discoveryModeEnabled,
     minimumNoticeMinutes: clampMinimumNoticeMinutes(
-      supportsMinimumNotice ? data['minimum_notice_minutes'] : undefined,
+      supportsExtendedColumns ? data['minimum_notice_minutes'] : undefined,
       fallbackSettings.minimumNoticeMinutes
     ),
     updatedAt:
@@ -451,14 +480,14 @@ export async function saveAvailabilityDisplaySettings(
     return fallbackSave();
   }
 
-  const minimumNoticeColumnStatus = await ensureMinimumNoticeColumn(supabase);
-  const supportsMinimumNotice = minimumNoticeColumnStatus.ready;
+  const columnStatus = await ensureNecessaryColumns(supabase);
+  const supportsExtendedColumns = columnStatus.ready;
 
-  if (!supportsMinimumNotice && settings.minimumNoticeMinutes !== undefined) {
+  if (!supportsExtendedColumns && (settings.minimumNoticeMinutes !== undefined || settings.discoveryModeEnabled !== undefined)) {
     if (options.requirePersistentStore) {
       throw createPersistenceError(
-        minimumNoticeColumnStatus.reason
-        || 'minimum_notice_minutes column is unavailable. Run migration 008_booking_display_minimum_notice.sql'
+        columnStatus.reason
+        || 'Extended columns are unavailable. Check database schema.'
       );
     }
 
@@ -474,12 +503,14 @@ export async function saveAvailabilityDisplaySettings(
       seedDefaults: true,
     }
   );
+
   const nextSettings: AvailabilityDisplaySettings = {
     displayWindowDays: clampDisplayWindowDays(
       settings.displayWindowDays ?? existing.displayWindowDays,
       existing.displayWindowDays
     ),
     aiConciergeEnabled: settings.aiConciergeEnabled ?? existing.aiConciergeEnabled,
+    discoveryModeEnabled: settings.discoveryModeEnabled ?? existing.discoveryModeEnabled,
     minimumNoticeMinutes: clampMinimumNoticeMinutes(
       settings.minimumNoticeMinutes ?? existing.minimumNoticeMinutes,
       existing.minimumNoticeMinutes
@@ -488,23 +519,15 @@ export async function saveAvailabilityDisplaySettings(
   };
 
   const persisted = await persistDatabaseBackedSettings(supabase, userEmail, nextSettings, {
-    includeMinimumNoticeMinutes: supportsMinimumNotice,
+    includeExtendedColumns: supportsExtendedColumns,
   });
 
   if (!persisted) {
     if (options.requirePersistentStore) {
       throw createPersistenceError('failed to write settings to the database');
     }
-
     return fallbackSave();
   }
 
   return syncFileBackedSettings(userEmail, persisted);
 }
-
-export {
-  MAX_DISPLAY_DAYS,
-  MIN_DISPLAY_DAYS,
-  MAX_MINIMUM_NOTICE_MINUTES,
-  MIN_MINIMUM_NOTICE_MINUTES,
-};

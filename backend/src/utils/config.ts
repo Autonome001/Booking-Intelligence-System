@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
  */
 
 // Service types
-export type ServiceName = 'supabase' | 'openai' | 'slack' | 'email' | 'calendar';
+export type ServiceName = 'supabase' | 'openai' | 'slack' | 'email' | 'calendar' | 'tavus';
 
 // Configuration interfaces
 export interface SupabaseConfig {
@@ -45,12 +45,18 @@ export interface CalendarConfig {
   scopes: string[];
 }
 
+export interface TavusConfig {
+  apiKey: string;
+  replicaId: string;
+}
+
 export type ServiceConfig =
   | SupabaseConfig
   | OpenAIConfig
   | SlackConfig
   | EmailConfig
-  | CalendarConfig;
+  | CalendarConfig
+  | TavusConfig;
 
 export interface EnvironmentValidation {
   isValid: boolean;
@@ -99,6 +105,7 @@ const OPTIONAL_SERVICE_ENV_VARS: Record<ServiceName, string[]> = {
   slack: ['SLACK_BOT_TOKEN', 'SLACK_SIGNING_SECRET'],
   email: ['RESEND_API_KEY'],
   calendar: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+  tavus: ['TAVUS_API_KEY', 'TAVUS_REPLICA_ID'],
 };
 
 /**
@@ -150,6 +157,7 @@ export function getServiceConfig(serviceName: 'openai'): OpenAIConfig;
 export function getServiceConfig(serviceName: 'slack'): SlackConfig;
 export function getServiceConfig(serviceName: 'email'): EmailConfig;
 export function getServiceConfig(serviceName: 'calendar'): CalendarConfig;
+export function getServiceConfig(serviceName: 'tavus'): TavusConfig;
 export function getServiceConfig(serviceName: ServiceName): ServiceConfig {
   const configs: Record<ServiceName, ServiceConfig> = {
     supabase: {
@@ -178,6 +186,10 @@ export function getServiceConfig(serviceName: ServiceName): ServiceConfig {
         'https://www.googleapis.com/auth/calendar.events',
         'https://www.googleapis.com/auth/calendar.readonly',
       ],
+    },
+    tavus: {
+      apiKey: process.env['TAVUS_API_KEY'] || '',
+      replicaId: process.env['TAVUS_REPLICA_ID'] || '',
     },
   };
 
