@@ -354,16 +354,68 @@
             <label class="admin-toggle-switch" for="discovery-mode-enabled">
               <input type="checkbox" id="discovery-mode-enabled" checked>
               <span class="admin-toggle-slider"></span>
-              <span class="admin-toggle-label">Activate Tavus Discovery session intros</span>
+              <span class="admin-toggle-label">Enable video-first discovery session intros</span>
             </label>
           </div>
 
-          <button type="submit" id="save-display-settings-btn" class="btn btn-primary btn-sm">
-            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            Save Booking Display Settings
-          </button>
+          <div class="admin-settings-grid">
+            <div class="admin-setting-copy">
+              <label class="form-label" for="waitlist-enabled">Waitlist Access</label>
+              <p class="admin-settings-summary">Enable a "Join Waitlist" option on the booking page for users to submit interest if no slots fit.</p>
+            </div>
+            <label class="admin-toggle-switch" for="waitlist-enabled">
+              <input type="checkbox" id="waitlist-enabled">
+              <span class="admin-toggle-slider"></span>
+              <span class="admin-toggle-label">Enable "Join Waitlist" option</span>
+            </label>
+          </div>
+
+          <!-- Waitlist Personalization Section -->
+          <div id="waitlist-personalization" style="display: none; margin-top: 1.5rem; padding: 1.5rem; background: var(--gray-50); border-radius: 8px; border: 1px solid var(--gray-200);">
+            <h4 style="margin-top: 0; margin-bottom: 1rem; color: var(--gray-900);">Waitlist Personalization</h4>
+            
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="waitlist-title">Waitlist Title</label>
+              <input type="text" id="waitlist-title" class="form-input" placeholder="e.g. Experience the Future of AI Strategy">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="waitlist-description">Waitlist Description</label>
+              <textarea id="waitlist-description" class="form-input" rows="3" placeholder="Join our exclusive waitlist today..."></textarea>
+            </div>
+
+            <label class="admin-toggle-switch" for="show-waitlist-copyright">
+              <input type="checkbox" id="show-waitlist-copyright" checked>
+              <span class="admin-toggle-slider"></span>
+              <span class="admin-toggle-label">Show copyright notice at bottom of waitlist page</span>
+            </label>
+
+            <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; color: var(--gray-900);">Main Page Waitlist Banner (CTA)</h4>
+            
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="waitlist-cta-title">Banner Title</label>
+              <input type="text" id="waitlist-cta-title" class="form-input" placeholder="e.g. High Demand: Alternative Path Available">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="waitlist-cta-description">Banner Description</label>
+              <textarea id="waitlist-cta-description" class="form-input" rows="2" placeholder="Describe why they should join..."></textarea>
+            </div>
+
+            <div style="margin-bottom: 0;">
+              <label class="form-label" for="waitlist-cta-button-text">Banner Button Text</label>
+              <input type="text" id="waitlist-cta-button-text" class="form-input" placeholder="e.g. Join Priority Waitlist">
+            </div>
+          </div>
+
+          <div style="margin-top: 2rem;">
+            <button type="submit" id="save-display-settings-btn" class="btn btn-primary btn-sm">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>Save Booking Display Settings</span>
+            </button>
+          </div>
         </form>
       </div>
 

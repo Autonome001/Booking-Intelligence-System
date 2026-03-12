@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join the Waitlist | Autonome</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb; /* Royal Blue */
+            --primary-light: #60a5fa;
+            --primary-dark: #1d4ed8;
+            --secondary: #10b981;
+            --dark: #0f172a;
+            --light: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-800: #1e293b;
+            --accent: #f43f5e;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .waitlist-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 2rem;
+            padding: 3rem;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            background: linear-gradient(to right, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: var(--gray-300);
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--gray-200);
+        }
+
+        input, select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+        }
+
+        .interest-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .interest-option {
+            position: relative;
+        }
+
+        .interest-option input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .interest-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+            text-align: center;
+            height: 100%;
+        }
+
+        .interest-option input:checked + .interest-label {
+            background: rgba(37, 99, 235, 0.1);
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .submit-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .footer {
+            margin-top: 3rem;
+            text-align: center;
+            color: var(--gray-300);
+            font-size: 0.875rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--primary-light);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(37, 99, 235, 0.2);
+        }
+
+        /* Success Message */
+        .success-overlay {
+            display: none;
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+            color: var(--secondary);
+        }
+
+        .success-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .success-text {
+            color: var(--gray-300);
+            margin-bottom: 2rem;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        @media (max-width: 640px) {
+            .waitlist-card {
+                padding: 2rem;
+            }
+            .interest-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">Blueprint</div>
+        
+        <div class="waitlist-card" id="waitlist-content">
+            <div style="text-align: center;">
+                <div class="badge">COMING SOON</div>
+            </div>
+            <h1>Experience the Future of AI Strategy</h1>
+            <p class="subtitle">Join our exclusive waitlist today and be the first to know when we open new slots for our Autonome Blueprint AI audit and assessment platform.</p>
+            
+            <form id="waitlist-form">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Work Email</label>
+                    <input type="email" id="email" name="email" placeholder="name@company.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Interest Level</label>
+                    <div class="interest-grid">
+                        <div class="interest-option">
+                            <input type="radio" id="curious" name="interest_level" value="curious" checked>
+                            <label for="curious" class="interest-label">I'm just curious</label>
+                        </div>
+                        <div class="interest-option">
+                            <input type="radio" id="platform" name="interest_level" value="platform">
+                            <label for="platform" class="interest-label">Interested in platform</label>
+                        </div>
+                        <div class="interest-option">
+                            <input type="radio" id="assessment" name="interest_level" value="assessment">
+                            <label for="assessment" class="interest-label">Ready for assessment</label>
+                        </div>
+                        <div class="interest-option">
+                            <input type="radio" id="reseller" name="interest_level" value="reseller">
+                            <label for="reseller" class="interest-label">Partner / Reseller</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="submit-btn">
+                    <span>Reserve My Spot</span>
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+
+        <div class="waitlist-card success-overlay" id="success-message">
+            <div class="success-icon">
+                <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="success-title">You're on the list!</h2>
+            <p class="success-text">Thank you for your interest in Autonome. We've reserved your spot and will be in touch shortly with next steps.</p>
+            <button class="submit-btn" onclick="location.reload()">
+                Back to Top
+            </button>
+        </div>
+
+        <div class="footer">
+            &copy; 2026 Autonome. All rights reserved.
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('waitlist-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const waitlistContent = document.getElementById('waitlist-content');
+        const successMessage = document.getElementById('success-message');
+
+        const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
+
+        function resolveUserEmail() {
+            const searchParams = new URLSearchParams(window.location.search);
+            const queryUserEmail = searchParams.get('user_email')?.trim();
+            const bodyUserEmail = document.body?.dataset?.userEmail?.trim();
+            const storedUserEmail = window.localStorage.getItem(ADMIN_USER_EMAIL_STORAGE_KEY)?.trim();
+
+            return queryUserEmail || bodyUserEmail || storedUserEmail || null;
+        }
+
+        const USER_EMAIL = resolveUserEmail();
+
+        function appendUserEmail(path) {
+            if (!USER_EMAIL) return path;
+            const separator = path.includes('?') ? '&' : '?';
+            return `${path}${separator}user_email=${encodeURIComponent(USER_EMAIL)}`;
+        }
+
+        // Load dynamic content
+        async function loadContent() {
+            console.log('Fetching waitlist personalization settings...');
+            try {
+                const url = appendUserEmail('/api/calendar/preferences');
+                console.log('Request URL:', url);
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    console.error('Fetch failed with status:', response.status);
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('Fetched data:', data);
+                
+                const settings = data.settings;
+                
+                if (settings) {
+                    console.log('Applying settings:', settings);
+                    if (settings.waitlistTitle) {
+                        const h1 = document.querySelector('h1');
+                        if (h1) h1.textContent = settings.waitlistTitle;
+                    }
+                    if (settings.waitlistDescription) {
+                        const subtitle = document.querySelector('.subtitle');
+                        if (subtitle) subtitle.textContent = settings.waitlistDescription;
+                    }
+                    if (settings.showWaitlistCopyright === false) {
+                        const footer = document.querySelector('.footer');
+                        if (footer) footer.style.display = 'none';
+                    }
+                } else {
+                    console.warn('No settings object found in response data');
+                }
+            } catch (error) {
+                console.error('Failed to load dynamic settings:', error);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadContent);
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>Processing...</span>';
+            
+            const formData = new FormData(form);
+            const data = {
+                name: formData.get('name'),
+                email: formData.get('email'),
+                interest_level: formData.get('interest_level')
+            };
+            
+            try {
+                const response = await fetch('/api/waitlist/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    waitlistContent.style.display = 'none';
+                    successMessage.style.display = 'block';
+                } else {
+                    throw new Error(result.error || 'Submission failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Oops! Something went wrong. Please try again later.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>Reserve My Spot</span><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>';
+            }
+        });
+    </script>
+</body>
+</html>

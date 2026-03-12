@@ -595,6 +595,30 @@ async function loadDisplaySettings() {
     rangeInput.value = settings.displayWindowDays || 20;
     aiToggle.checked = settings.aiConciergeEnabled !== false;
     discoveryToggle.checked = settings.discoveryModeEnabled !== false;
+    const waitlistToggle = document.getElementById('waitlist-enabled');
+    const waitlistPersonalization = document.getElementById('waitlist-personalization');
+    const waitlistTitle = document.getElementById('waitlist-title');
+    const waitlistDescription = document.getElementById('waitlist-description');
+    const waitlistCopyright = document.getElementById('show-waitlist-copyright');
+    const waitlistCtaTitle = document.getElementById('waitlist-cta-title');
+    const waitlistCtaDescription = document.getElementById('waitlist-cta-description');
+    const waitlistCtaButtonText = document.getElementById('waitlist-cta-button-text');
+
+    if (waitlistToggle) {
+      waitlistToggle.checked = settings.waitlistEnabled || false;
+      waitlistPersonalization.style.display = waitlistToggle.checked ? 'block' : 'none';
+      waitlistToggle.addEventListener('change', () => {
+        waitlistPersonalization.style.display = waitlistToggle.checked ? 'block' : 'none';
+      });
+    }
+    
+    if (waitlistTitle) waitlistTitle.value = settings.waitlistTitle || '';
+    if (waitlistDescription) waitlistDescription.value = settings.waitlistDescription || '';
+    if (waitlistCopyright) waitlistCopyright.checked = settings.showWaitlistCopyright !== false;
+    if (waitlistCtaTitle) waitlistCtaTitle.value = settings.waitlistCtaTitle || '';
+    if (waitlistCtaDescription) waitlistCtaDescription.value = settings.waitlistCtaDescription || '';
+    if (waitlistCtaButtonText) waitlistCtaButtonText.value = settings.waitlistCtaButtonText || '';
+
     minimumNoticeInput.value = settings.minimumNoticeMinutes ?? 30;
     updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
   } catch (error) {
@@ -640,6 +664,13 @@ async function saveDisplaySettings(event) {
   const displayWindowDays = parseInt(document.getElementById('display-window-days').value, 10);
   const aiConciergeEnabled = document.getElementById('ai-concierge-enabled').checked;
   const discoveryModeEnabled = document.getElementById('discovery-mode-enabled').checked;
+  const waitlistEnabled = document.getElementById('waitlist-enabled').checked;
+  const waitlistTitle = document.getElementById('waitlist-title').value;
+  const waitlistDescription = document.getElementById('waitlist-description').value;
+  const showWaitlistCopyright = document.getElementById('show-waitlist-copyright').checked;
+  const waitlistCtaTitle = document.getElementById('waitlist-cta-title').value;
+  const waitlistCtaDescription = document.getElementById('waitlist-cta-description').value;
+  const waitlistCtaButtonText = document.getElementById('waitlist-cta-button-text').value;
   const minimumNoticeMinutes = parseInt(document.getElementById('minimum-notice-minutes').value, 10);
 
   setButtonLoading(saveButton, true, 'Saving...');
@@ -653,6 +684,13 @@ async function saveDisplaySettings(event) {
         display_window_days: displayWindowDays,
         ai_concierge_enabled: aiConciergeEnabled,
         discovery_mode_enabled: discoveryModeEnabled,
+        waitlist_enabled: waitlistEnabled,
+        waitlist_title: waitlistTitle,
+        waitlist_description: waitlistDescription,
+        show_waitlist_copyright: showWaitlistCopyright,
+        waitlist_cta_title: waitlistCtaTitle,
+        waitlist_cta_description: waitlistCtaDescription,
+        waitlist_cta_button_text: waitlistCtaButtonText,
         minimum_notice_minutes: minimumNoticeMinutes,
       }),
     });
@@ -671,6 +709,30 @@ async function saveDisplaySettings(event) {
       result.settings?.aiConciergeEnabled !== false;
     document.getElementById('discovery-mode-enabled').checked =
       result.settings?.discoveryModeEnabled !== false;
+    const waitlistToggle = document.getElementById('waitlist-enabled');
+    if (waitlistToggle) {
+      waitlistToggle.checked = result.settings?.waitlistEnabled || false;
+      document.getElementById('waitlist-personalization').style.display = waitlistToggle.checked ? 'block' : 'none';
+    }
+    
+    if (result.settings?.waitlistTitle !== undefined) {
+      document.getElementById('waitlist-title').value = result.settings.waitlistTitle;
+    }
+    if (result.settings?.waitlistDescription !== undefined) {
+      document.getElementById('waitlist-description').value = result.settings.waitlistDescription;
+    }
+    if (result.settings?.showWaitlistCopyright !== undefined) {
+      document.getElementById('show-waitlist-copyright').checked = result.settings.showWaitlistCopyright;
+    }
+    if (result.settings?.waitlistCtaTitle !== undefined) {
+      document.getElementById('waitlist-cta-title').value = result.settings.waitlistCtaTitle;
+    }
+    if (result.settings?.waitlistCtaDescription !== undefined) {
+      document.getElementById('waitlist-cta-description').value = result.settings.waitlistCtaDescription;
+    }
+    if (result.settings?.waitlistCtaButtonText !== undefined) {
+      document.getElementById('waitlist-cta-button-text').value = result.settings.waitlistCtaButtonText;
+    }
 
     updateDisplayWindowPreview(
       result.settings?.displayWindowDays || displayWindowDays,

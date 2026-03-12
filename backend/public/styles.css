@@ -114,6 +114,10 @@ body::before {
   padding: 0 2rem;
 }
 
+.admin-page .container {
+  max-width: 1600px;
+}
+
 .icon {
   width: 1.125rem;
   height: 1.125rem;

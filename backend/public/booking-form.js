@@ -78,9 +78,25 @@ async function checkAvailabilityFeatureFlag() {
       cache: 'no-store',
     });
     const data = await response.json();
+    const waitlistEnabled = data.waitlistEnabled === true;
 
     maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
     aiConciergeEnabled = data.ai_concierge_enabled !== false;
+
+    const waitlistBanner = document.getElementById('waitlist-banner');
+    if (waitlistEnabled && waitlistBanner) {
+      waitlistBanner.classList.remove('hidden');
+      
+      const ctaTitle = document.getElementById('waitlist-cta-title-display');
+      const ctaDesc = document.getElementById('waitlist-cta-desc-display');
+      const ctaBtn = document.getElementById('waitlist-cta-btn-display');
+
+      if (ctaTitle && data.waitlistCtaTitle) ctaTitle.textContent = data.waitlistCtaTitle;
+      if (ctaDesc && data.waitlistCtaDescription) ctaDesc.textContent = data.waitlistCtaDescription;
+      if (ctaBtn && data.waitlistCtaButtonText) ctaBtn.textContent = data.waitlistCtaButtonText;
+    } else if (waitlistBanner) {
+      waitlistBanner.classList.add('hidden');
+    }
 
     const conciergeSection = document.getElementById('ai-concierge-section');
     if (aiConciergeEnabled) {
@@ -153,13 +169,17 @@ async function fetchAvailability(weekOffset) {
       renderAvailabilityFilter(data.slots);
       renderSlots(data.slots);
     } else {
+      const waitlistAction = data.waitlistEnabled ?
+        `<p style="margin-top: 1rem;"><a href="/waitlist" class="btn btn-primary">Join the Priority Waitlist</a></p>` :
+        `<p>Try another visible week, or use the live booking chat below to find a better time.</p>`;
+
       slotsContainer.innerHTML = `
         <div class="text-center text-muted" style="padding: 3rem;">
           <svg class="icon-xl" style="margin: 0 auto 1rem; opacity: 0.5;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
           </svg>
           <p style="font-weight: 500;">No available slots this week</p>
-          <p>Try another visible week, or use the live booking chat below to find a better time.</p>
+          ${waitlistAction}
         </div>
       `;
     }

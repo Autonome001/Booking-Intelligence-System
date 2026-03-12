@@ -100,6 +100,20 @@
       <p class="loading-terminal">SYNCHRONIZING WITH SYSTEM...</p>
     </div>
 
+    <!-- Waitlist Invitation (Standalone View) -->
+    <div id="waitlist-banner" class="alert alert-waitlist hidden" style="margin-bottom: 2rem; background: var(--electric-blue-glow); border: 1px solid var(--electric-blue); display: flex; align-items: center; gap: 1.5rem; justify-content: space-between; padding: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--electric-blue);">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <div>
+          <strong id="waitlist-cta-title-display" style="color: var(--electric-blue); font-size: 1.1rem;">High Demand: Alternative Path Available</strong>
+          <p id="waitlist-cta-desc-display" style="margin: 0; opacity: 0.8;">Can't find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.</p>
+        </div>
+      </div>
+      <a href="/waitlist" id="waitlist-cta-btn-display" class="btn btn-secondary" style="white-space: nowrap; border-color: var(--electric-blue); color: var(--electric-blue);">Join Priority Waitlist</a>
+    </div>
+
     <!-- Booking Workflow -->
     <div class="workflow-container">
       <!-- Step 1: Availability -->

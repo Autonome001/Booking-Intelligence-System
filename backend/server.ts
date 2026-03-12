@@ -13,8 +13,8 @@ import slackRouter from './src/api/slack-router.js';
 import calendarOAuthRouter from './src/api/calendar-oauth.js';
 import calendarWebhookRouter from './src/api/calendar-webhook.js';
 import calendarAvailabilityRouter from './src/api/calendar-availability.js';
-import calendarAvailabilityControlsRouter from './src/api/calendar-availability-controls.js';
 import tavusWebhookRouter from './src/api/tavus-webhook.js';
+import waitlistRouter from './src/api/waitlist-router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -274,8 +274,8 @@ app.use('/api/tavus/webhook', tavusWebhookRouter);
 // Calendar availability API
 app.use('/api/calendar', calendarAvailabilityRouter);
 
-// Calendar availability controls (blackouts, working hours)
-app.use('/api/calendar', calendarAvailabilityControlsRouter);
+// Waitlist API
+app.use('/api/waitlist', waitlistRouter);
 
 // Serve static files from public directory
 app.use(
@@ -296,6 +296,11 @@ app.use(
 // Default route serves booking form
 app.get('/', (_req: Request, res: Response): void => {
   res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// Explicit waitlist route
+app.get('/waitlist', (_req: Request, res: Response): void => {
+  res.sendFile(path.join(publicDir, 'waitlist.html'));
 });
 
 // Embed route serves the same booking UI in a compact mode suitable for modals/iframes

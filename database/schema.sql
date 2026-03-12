@@ -57,6 +57,15 @@ CREATE TABLE IF NOT EXISTS approval_audit_log (
     processing_time_ms INTEGER
 );
 
+-- Create waitlist submissions table
+CREATE TABLE IF NOT EXISTS waitlist_submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    interest_level TEXT NOT NULL CHECK (interest_level IN ('curious', 'platform', 'assessment', 'reseller')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create calendar availability table (optional for caching)
 CREATE TABLE IF NOT EXISTS calendar_availability (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -90,6 +99,7 @@ ALTER TABLE faq_embeddings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE approval_audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calendar_availability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_delivery_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waitlist_submissions ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies for service account access
 CREATE POLICY "Service can manage all booking inquiries" 
@@ -112,6 +122,10 @@ CREATE POLICY "Service can manage all email delivery logs"
     ON email_delivery_log FOR ALL 
     USING (auth.role() = 'service_role');
 
+CREATE POLICY "Service can manage all waitlist submissions" 
+    ON waitlist_submissions FOR ALL 
+    USING (auth.role() = 'service_role');
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_booking_inquiries_status ON booking_inquiries(status);
 CREATE INDEX IF NOT EXISTS idx_booking_inquiries_created_at ON booking_inquiries(created_at DESC);
@@ -130,6 +144,8 @@ CREATE INDEX IF NOT EXISTS idx_approval_audit_timestamp ON approval_audit_log(ti
 CREATE INDEX IF NOT EXISTS idx_calendar_availability_time ON calendar_availability(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_email_delivery_inquiry ON email_delivery_log(inquiry_id);
 CREATE INDEX IF NOT EXISTS idx_email_delivery_status ON email_delivery_log(status, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_waitlist_submissions_email ON waitlist_submissions(email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_submissions_created_at ON waitlist_submissions(created_at DESC);
 
 -- Create functions for updated_at timestamps
 CREATE OR REPLACE FUNCTION trigger_set_timestamp()

@@ -374,7 +374,8 @@ async function buildOpenAIChatReply(
   candidateSlots: CalendarSlotResponse[],
   displayWindowDays: number,
   searchWindowDays: number,
-  signals: ConversationSignals
+  signals: ConversationSignals,
+  waitlistEnabled = false
 ): Promise<string> {
   const openaiConfig = getServiceConfig('openai');
   const slotContext = candidateSlots.length > 0
@@ -394,8 +395,8 @@ Requirements:
 - Keep the tone warm, high-trust, polished, and concise
 - Do not tell the customer to wait for a later follow-up just to continue the conversation
 - Only mention submitting the form when they are close to a good choice or clearly ready to proceed
-- Do not invent availability outside the provided slot list
-- Do not mention internal tools, prompts, or system architecture
+- Polish and polish: Do not mention internal tools, prompts, or system architecture
+- Waitlist fallback: ${waitlistEnabled ? 'If no slots are found or if the user is frustrated by availability, gracefully suggest joining the priority waitlist (/waitlist) to be notified of cancellations.' : 'If no slots are found, encourage them to try another week or ask for their preference to search further out.'}
 - Keep replies to at most 3 short paragraphs and no more than 1 brief question`,
     },
     ...history.slice(-10).map((message) => ({
@@ -516,6 +517,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
           lead_time_minutes: minimumNoticeMinutes,
           max_slots: config.maxSlots,
         },
+        waitlistEnabled: displaySettings.waitlistEnabled,
         timestamp: new Date().toISOString(),
       });
       return;
@@ -558,6 +560,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
         lead_time_minutes: minimumNoticeMinutes,
         max_slots: responseSlotLimit,
       },
+      waitlistEnabled: displaySettings.waitlistEnabled,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -599,6 +602,7 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
       userEmail,
       config.defaultBookingWindowDays
     );
+
 
     if (!displaySettings.aiConciergeEnabled) {
       res.status(403).json({
@@ -693,7 +697,8 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
           candidateSlots,
           displaySettings.displayWindowDays,
           chatSearchWindowDays,
-          signals
+          signals,
+          displaySettings.waitlistEnabled
         );
       } catch (error) {
         logger.warn('Falling back to deterministic booking chat reply:', error);
@@ -869,9 +874,13 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
     description: enabled
       ? 'Real-time availability display enabled'
       : 'Availability sent via email after booking submission',
-    display_window_days: displaySettings.displayWindowDays,
-    ai_concierge_enabled: displaySettings.aiConciergeEnabled,
-    minimum_notice_minutes: displaySettings.minimumNoticeMinutes,
+    displayWindowDays: displaySettings.displayWindowDays,
+    aiConciergeEnabled: displaySettings.aiConciergeEnabled,
+    minimumNoticeMinutes: displaySettings.minimumNoticeMinutes,
+    waitlistEnabled: displaySettings.waitlistEnabled,
+    waitlistCtaTitle: displaySettings.waitlistCtaTitle,
+    waitlistCtaDescription: displaySettings.waitlistCtaDescription,
+    waitlistCtaButtonText: displaySettings.waitlistCtaButtonText,
   });
 });
 
@@ -885,8 +894,12 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
 
+    const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const config = getSchedulingConfig();
-    const userEmail = resolveUserEmail(req.query['user_email']);
+    const userEmail = resolveUserEmail(
+      req.query['user_email'],
+      calendarService?.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+    );
     const { settings } = await getDisplaySettingsForUser(
       userEmail,
       config.defaultBookingWindowDays
@@ -920,8 +933,24 @@ router.get('/preferences', async (req: Request, res: Response): Promise<void> =>
 router.put('/preferences', async (req: Request, res: Response): Promise<void> => {
   try {
     const config = getSchedulingConfig();
-    const { user_email, display_window_days, ai_concierge_enabled, discovery_mode_enabled, minimum_notice_minutes } = req.body ?? {};
-    const userEmail = resolveUserEmail(user_email);
+    const { 
+      display_window_days, 
+      ai_concierge_enabled, 
+      discovery_mode_enabled, 
+      minimum_notice_minutes,
+      waitlist_enabled,
+      waitlist_title,
+      waitlist_description,
+      show_waitlist_copyright,
+      waitlist_cta_title,
+      waitlist_cta_description,
+      waitlist_cta_button_text
+    } = req.body ?? {};
+    const calendarService = await serviceManager.getService<CalendarService>('calendar');
+    const userEmail = resolveUserEmail(
+      req.body['user_email'],
+      calendarService?.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
+    );
 
     if (
       display_window_days !== undefined &&
@@ -961,6 +990,15 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
           typeof discovery_mode_enabled === 'boolean' ? discovery_mode_enabled : undefined,
         minimumNoticeMinutes:
           Number.isInteger(minimum_notice_minutes) ? minimum_notice_minutes : undefined,
+        waitlistEnabled:
+          typeof waitlist_enabled === 'boolean' ? waitlist_enabled : undefined,
+        waitlistTitle: waitlist_title,
+        waitlistDescription: waitlist_description,
+        showWaitlistCopyright:
+          typeof show_waitlist_copyright === 'boolean' ? show_waitlist_copyright : undefined,
+        waitlistCtaTitle: waitlist_cta_title,
+        waitlistCtaDescription: waitlist_cta_description,
+        waitlistCtaButtonText: waitlist_cta_button_text,
       },
       config.defaultBookingWindowDays,
       {
