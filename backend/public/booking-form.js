@@ -79,9 +79,15 @@ async function checkAvailabilityFeatureFlag() {
     });
     const data = await response.json();
     const waitlistEnabled = data.waitlistEnabled === true;
+    const waitlistUrl = typeof data.waitlistUrl === 'string' && data.waitlistUrl
+      ? data.waitlistUrl
+      : appendBookingUserEmail('/waitlist');
 
-    maxDisplayDays = Math.max(7, Math.min(60, parseInt(data.display_window_days, 10) || 20));
-    aiConciergeEnabled = data.ai_concierge_enabled !== false;
+    maxDisplayDays = Math.max(
+      7,
+      Math.min(60, parseInt(data.displayWindowDays ?? data.display_window_days, 10) || 20)
+    );
+    aiConciergeEnabled = (data.aiConciergeEnabled ?? data.ai_concierge_enabled) !== false;
 
     const waitlistBanner = document.getElementById('waitlist-banner');
     if (waitlistEnabled && waitlistBanner) {
@@ -93,7 +99,10 @@ async function checkAvailabilityFeatureFlag() {
 
       if (ctaTitle && data.waitlistCtaTitle) ctaTitle.textContent = data.waitlistCtaTitle;
       if (ctaDesc && data.waitlistCtaDescription) ctaDesc.textContent = data.waitlistCtaDescription;
-      if (ctaBtn && data.waitlistCtaButtonText) ctaBtn.textContent = data.waitlistCtaButtonText;
+      if (ctaBtn) {
+        if (data.waitlistCtaButtonText) ctaBtn.textContent = data.waitlistCtaButtonText;
+        ctaBtn.href = waitlistUrl;
+      }
     } else if (waitlistBanner) {
       waitlistBanner.classList.add('hidden');
     }
@@ -169,8 +178,11 @@ async function fetchAvailability(weekOffset) {
       renderAvailabilityFilter(data.slots);
       renderSlots(data.slots);
     } else {
+      const waitlistUrl = typeof data.waitlistUrl === 'string' && data.waitlistUrl
+        ? data.waitlistUrl
+        : appendBookingUserEmail('/waitlist');
       const waitlistAction = data.waitlistEnabled ?
-        `<p style="margin-top: 1rem;"><a href="/waitlist" class="btn btn-primary">Join the Priority Waitlist</a></p>` :
+        `<p style="margin-top: 1rem;"><a href="${waitlistUrl}" class="btn btn-primary">Join the Priority Waitlist</a></p>` :
         `<p>Try another visible week, or use the live booking chat below to find a better time.</p>`;
 
       slotsContainer.innerHTML = `

@@ -66,6 +66,24 @@ CREATE TABLE IF NOT EXISTS waitlist_submissions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create booking display settings table
+CREATE TABLE IF NOT EXISTS booking_display_settings (
+    user_email TEXT PRIMARY KEY,
+    display_window_days INTEGER NOT NULL DEFAULT 20 CHECK (display_window_days BETWEEN 7 AND 60),
+    ai_concierge_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    discovery_mode_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    minimum_notice_minutes INTEGER NOT NULL DEFAULT 30 CHECK (minimum_notice_minutes BETWEEN 0 AND 1440),
+    waitlist_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    waitlist_title TEXT DEFAULT 'Experience the Future of AI Strategy',
+    waitlist_description TEXT DEFAULT 'Join our exclusive waitlist today and be the first to know when we open new slots for our Autonome Blueprint AI audit and assessment platform.',
+    show_waitlist_copyright BOOLEAN DEFAULT TRUE,
+    waitlist_cta_title TEXT DEFAULT 'High Demand: Alternative Path Available',
+    waitlist_cta_description TEXT DEFAULT 'Can''t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.',
+    waitlist_cta_button_text TEXT DEFAULT 'Join Priority Waitlist',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create calendar availability table (optional for caching)
 CREATE TABLE IF NOT EXISTS calendar_availability (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_email_delivery_inquiry ON email_delivery_log(inqu
 CREATE INDEX IF NOT EXISTS idx_email_delivery_status ON email_delivery_log(status, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_waitlist_submissions_email ON waitlist_submissions(email);
 CREATE INDEX IF NOT EXISTS idx_waitlist_submissions_created_at ON waitlist_submissions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_booking_display_settings_updated_at ON booking_display_settings(updated_at DESC);
 
 -- Create functions for updated_at timestamps
 CREATE OR REPLACE FUNCTION trigger_set_timestamp()

@@ -277,8 +277,8 @@
             <div style="text-align: center;">
                 <div class="badge">COMING SOON</div>
             </div>
-            <h1>Experience the Future of AI Strategy</h1>
-            <p class="subtitle">Join our exclusive waitlist today and be the first to know when we open new slots for our Autonome Blueprint AI audit and assessment platform.</p>
+            <h1 id="waitlist-title-display">Experience the Future of AI Strategy</h1>
+            <p class="subtitle" id="waitlist-description-display">Join our exclusive waitlist today and be the first to know when we open new slots for our Autonome Blueprint AI audit and assessment platform.</p>
             
             <form id="waitlist-form">
                 <div class="form-group">
@@ -330,120 +330,16 @@
             </div>
             <h2 class="success-title">You're on the list!</h2>
             <p class="success-text">Thank you for your interest in Autonome. We've reserved your spot and will be in touch shortly with next steps.</p>
-            <button class="submit-btn" onclick="location.reload()">
+            <button class="submit-btn" id="waitlist-reset-btn" type="button">
                 Back to Top
             </button>
         </div>
 
-        <div class="footer">
+        <div class="footer" id="waitlist-footer">
             &copy; 2026 Autonome. All rights reserved.
         </div>
     </div>
 
-    <script>
-        const form = document.getElementById('waitlist-form');
-        const submitBtn = document.getElementById('submit-btn');
-        const waitlistContent = document.getElementById('waitlist-content');
-        const successMessage = document.getElementById('success-message');
-
-        const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
-
-        function resolveUserEmail() {
-            const searchParams = new URLSearchParams(window.location.search);
-            const queryUserEmail = searchParams.get('user_email')?.trim();
-            const bodyUserEmail = document.body?.dataset?.userEmail?.trim();
-            const storedUserEmail = window.localStorage.getItem(ADMIN_USER_EMAIL_STORAGE_KEY)?.trim();
-
-            return queryUserEmail || bodyUserEmail || storedUserEmail || null;
-        }
-
-        const USER_EMAIL = resolveUserEmail();
-
-        function appendUserEmail(path) {
-            if (!USER_EMAIL) return path;
-            const separator = path.includes('?') ? '&' : '?';
-            return `${path}${separator}user_email=${encodeURIComponent(USER_EMAIL)}`;
-        }
-
-        // Load dynamic content
-        async function loadContent() {
-            console.log('Fetching waitlist personalization settings...');
-            try {
-                const url = appendUserEmail('/api/calendar/preferences');
-                console.log('Request URL:', url);
-                
-                const response = await fetch(url);
-                if (!response.ok) {
-                    console.error('Fetch failed with status:', response.status);
-                    return;
-                }
-                
-                const data = await response.json();
-                console.log('Fetched data:', data);
-                
-                const settings = data.settings;
-                
-                if (settings) {
-                    console.log('Applying settings:', settings);
-                    if (settings.waitlistTitle) {
-                        const h1 = document.querySelector('h1');
-                        if (h1) h1.textContent = settings.waitlistTitle;
-                    }
-                    if (settings.waitlistDescription) {
-                        const subtitle = document.querySelector('.subtitle');
-                        if (subtitle) subtitle.textContent = settings.waitlistDescription;
-                    }
-                    if (settings.showWaitlistCopyright === false) {
-                        const footer = document.querySelector('.footer');
-                        if (footer) footer.style.display = 'none';
-                    }
-                } else {
-                    console.warn('No settings object found in response data');
-                }
-            } catch (error) {
-                console.error('Failed to load dynamic settings:', error);
-            }
-        }
-
-        window.addEventListener('DOMContentLoaded', loadContent);
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span>Processing...</span>';
-            
-            const formData = new FormData(form);
-            const data = {
-                name: formData.get('name'),
-                email: formData.get('email'),
-                interest_level: formData.get('interest_level')
-            };
-            
-            try {
-                const response = await fetch('/api/waitlist/submit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.success) {
-                    waitlistContent.style.display = 'none';
-                    successMessage.style.display = 'block';
-                } else {
-                    throw new Error(result.error || 'Submission failed');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Oops! Something went wrong. Please try again later.');
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<span>Reserve My Spot</span><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>';
-            }
-        });
-    </script>
+    <script src="/waitlist.js"></script>
 </body>
 </html>

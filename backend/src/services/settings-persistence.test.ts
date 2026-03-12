@@ -43,6 +43,7 @@ const fileBackups = new Map<string, FileBackup>();
 const testUserEmails = [
   'display-settings-fallback-test@autonome.test',
   'display-settings-db-failure@autonome.test',
+  'display-settings-waitlist-test@autonome.test',
   'notification-settings-fallback-test@autonome.test',
   'notification-settings-db-failure@autonome.test',
 ];
@@ -154,6 +155,13 @@ function createReadableDisplaySupabase(row: {
   ai_concierge_enabled: boolean;
   minimum_notice_minutes: number;
   updated_at: string;
+  waitlist_enabled?: boolean;
+  waitlist_title?: string;
+  waitlist_description?: string;
+  show_waitlist_copyright?: boolean;
+  waitlist_cta_title?: string;
+  waitlist_cta_description?: string;
+  waitlist_cta_button_text?: string;
 }): any {
   return {
     from: () => ({
@@ -239,6 +247,46 @@ describe('settings persistence fallbacks', () => {
     });
   });
 
+  it('retains waitlist personalization fields through the file-backed fallback', async () => {
+    const userEmail = 'display-settings-waitlist-test@autonome.test';
+
+    const saved = await saveAvailabilityDisplaySettings(
+      null,
+      userEmail,
+      {
+        waitlistEnabled: true,
+        waitlistTitle: 'Custom Waitlist Title',
+        waitlistDescription: 'Custom waitlist description for the public page.',
+        showWaitlistCopyright: false,
+        waitlistCtaTitle: 'Join the custom priority list',
+        waitlistCtaDescription: 'Get notified when a better-fit slot opens.',
+        waitlistCtaButtonText: 'Join My Waitlist',
+      },
+      20
+    );
+
+    const loaded = await getAvailabilityDisplaySettings(null, userEmail, 20);
+
+    expect(saved).toMatchObject({
+      waitlistEnabled: true,
+      waitlistTitle: 'Custom Waitlist Title',
+      waitlistDescription: 'Custom waitlist description for the public page.',
+      showWaitlistCopyright: false,
+      waitlistCtaTitle: 'Join the custom priority list',
+      waitlistCtaDescription: 'Get notified when a better-fit slot opens.',
+      waitlistCtaButtonText: 'Join My Waitlist',
+    });
+    expect(loaded).toMatchObject({
+      waitlistEnabled: true,
+      waitlistTitle: 'Custom Waitlist Title',
+      waitlistDescription: 'Custom waitlist description for the public page.',
+      showWaitlistCopyright: false,
+      waitlistCtaTitle: 'Join the custom priority list',
+      waitlistCtaDescription: 'Get notified when a better-fit slot opens.',
+      waitlistCtaButtonText: 'Join My Waitlist',
+    });
+  });
+
   it('falls back to file-backed availability settings when database bootstrapping fails', async () => {
     const userEmail = 'display-settings-db-failure@autonome.test';
 
@@ -294,6 +342,38 @@ describe('settings persistence fallbacks', () => {
       displayWindowDays: 32,
       aiConciergeEnabled: false,
       minimumNoticeMinutes: 75,
+    });
+  });
+
+  it('reads waitlist personalization fields from database-backed settings rows', async () => {
+    const userEmail = 'display-settings-waitlist-test@autonome.test';
+
+    const loaded = await getAvailabilityDisplaySettings(
+      createReadableDisplaySupabase({
+        display_window_days: 20,
+        ai_concierge_enabled: true,
+        minimum_notice_minutes: 30,
+        waitlist_enabled: true,
+        waitlist_title: 'Database Waitlist Title',
+        waitlist_description: 'Database-backed waitlist description.',
+        show_waitlist_copyright: false,
+        waitlist_cta_title: 'Database CTA Title',
+        waitlist_cta_description: 'Database CTA Description',
+        waitlist_cta_button_text: 'Database CTA Button',
+        updated_at: '2030-01-01T00:00:00.000Z',
+      }),
+      userEmail,
+      20
+    );
+
+    expect(loaded).toMatchObject({
+      waitlistEnabled: true,
+      waitlistTitle: 'Database Waitlist Title',
+      waitlistDescription: 'Database-backed waitlist description.',
+      showWaitlistCopyright: false,
+      waitlistCtaTitle: 'Database CTA Title',
+      waitlistCtaDescription: 'Database CTA Description',
+      waitlistCtaButtonText: 'Database CTA Button',
     });
   });
 

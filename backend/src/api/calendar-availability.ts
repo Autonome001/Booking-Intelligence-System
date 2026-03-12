@@ -58,6 +58,37 @@ function resolveUserEmail(value: unknown, fallbackUserEmail = DEFAULT_USER_EMAIL
   return typeof value === 'string' && value.trim() ? value.trim() : fallbackUserEmail;
 }
 
+function buildWaitlistUrl(userEmail: string): string {
+  const normalizedUserEmail = resolveUserEmail(userEmail);
+  return `/waitlist?user_email=${encodeURIComponent(normalizedUserEmail)}`;
+}
+
+function buildPublicDisplaySettingsPayload(
+  userEmail: string,
+  enabled: boolean,
+  displaySettings: Awaited<ReturnType<typeof getAvailabilityDisplaySettings>>
+): Record<string, unknown> {
+  return {
+    enabled,
+    feature: 'calendar_slot_display',
+    description: enabled
+      ? 'Real-time availability display enabled'
+      : 'Availability sent via email after booking submission',
+    user_email: userEmail,
+    displayWindowDays: displaySettings.displayWindowDays,
+    aiConciergeEnabled: displaySettings.aiConciergeEnabled,
+    minimumNoticeMinutes: displaySettings.minimumNoticeMinutes,
+    waitlistEnabled: displaySettings.waitlistEnabled,
+    waitlistTitle: displaySettings.waitlistTitle,
+    waitlistDescription: displaySettings.waitlistDescription,
+    showWaitlistCopyright: displaySettings.showWaitlistCopyright,
+    waitlistCtaTitle: displaySettings.waitlistCtaTitle,
+    waitlistCtaDescription: displaySettings.waitlistCtaDescription,
+    waitlistCtaButtonText: displaySettings.waitlistCtaButtonText,
+    waitlistUrl: buildWaitlistUrl(userEmail),
+  };
+}
+
 function formatSlotLabel(slot: CalendarSlotResponse): string {
   const start = new Date(slot.start);
 
@@ -518,6 +549,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
           max_slots: config.maxSlots,
         },
         waitlistEnabled: displaySettings.waitlistEnabled,
+        waitlistUrl: buildWaitlistUrl(userEmail),
         timestamp: new Date().toISOString(),
       });
       return;
@@ -561,6 +593,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
         max_slots: responseSlotLimit,
       },
       waitlistEnabled: displaySettings.waitlistEnabled,
+      waitlistUrl: buildWaitlistUrl(userEmail),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -868,20 +901,7 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
     config.defaultBookingWindowDays
   );
 
-  res.json({
-    enabled,
-    feature: 'calendar_slot_display',
-    description: enabled
-      ? 'Real-time availability display enabled'
-      : 'Availability sent via email after booking submission',
-    displayWindowDays: displaySettings.displayWindowDays,
-    aiConciergeEnabled: displaySettings.aiConciergeEnabled,
-    minimumNoticeMinutes: displaySettings.minimumNoticeMinutes,
-    waitlistEnabled: displaySettings.waitlistEnabled,
-    waitlistCtaTitle: displaySettings.waitlistCtaTitle,
-    waitlistCtaDescription: displaySettings.waitlistCtaDescription,
-    waitlistCtaButtonText: displaySettings.waitlistCtaButtonText,
-  });
+  res.json(buildPublicDisplaySettingsPayload(userEmail, enabled, displaySettings));
 });
 
 /**
@@ -1002,7 +1022,7 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       },
       config.defaultBookingWindowDays,
       {
-        requirePersistentStore: false,
+        requirePersistentStore: true,
       }
     );
 

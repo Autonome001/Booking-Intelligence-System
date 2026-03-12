@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS booking_display_settings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+NOTIFY pgrst, 'reload schema';
 `;
 
 const BOOKING_DISPLAY_SETTINGS_MIGRATION_SQL = `
@@ -73,6 +74,7 @@ ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS waitlist_cta_description TEXT DEFAULT 'Can\'t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.';
 ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS waitlist_cta_button_text TEXT DEFAULT 'Join Priority Waitlist';
+NOTIFY pgrst, 'reload schema';
 `;
 
 function getSettingsFilePath(): string {
@@ -332,6 +334,24 @@ async function ensureNecessaryColumns(
     .limit(1);
   const customMissing = isBookingDisplaySettingsColumnMissing(probeCustom.error, 'waitlist_title');
 
+  const probeCustomDescription = await supabase
+    .from('booking_display_settings')
+    .select('waitlist_description')
+    .limit(1);
+  const customDescriptionMissing = isBookingDisplaySettingsColumnMissing(
+    probeCustomDescription.error,
+    'waitlist_description'
+  );
+
+  const probeWaitlistCopyright = await supabase
+    .from('booking_display_settings')
+    .select('show_waitlist_copyright')
+    .limit(1);
+  const waitlistCopyrightMissing = isBookingDisplaySettingsColumnMissing(
+    probeWaitlistCopyright.error,
+    'show_waitlist_copyright'
+  );
+
   // Check for CTA columns
   const probeCtaTitle = await supabase
     .from('booking_display_settings')
@@ -351,8 +371,17 @@ async function ensureNecessaryColumns(
     .limit(1);
   const ctaButtonTextMissing = isBookingDisplaySettingsColumnMissing(probeCtaButtonText.error, 'waitlist_cta_button_text');
 
-
-  if (!noticeMissing && !discoveryMissing && !waitlistMissing && !customMissing && !ctaTitleMissing && !ctaDescriptionMissing && !ctaButtonTextMissing) {
+  if (
+    !noticeMissing
+    && !discoveryMissing
+    && !waitlistMissing
+    && !customMissing
+    && !customDescriptionMissing
+    && !waitlistCopyrightMissing
+    && !ctaTitleMissing
+    && !ctaDescriptionMissing
+    && !ctaButtonTextMissing
+  ) {
     return { ready: true, repaired: false };
   }
 
@@ -631,7 +660,13 @@ export async function saveAvailabilityDisplaySettings(
   if (!supportsExtendedColumns && (
     settings.minimumNoticeMinutes !== undefined ||
     settings.discoveryModeEnabled !== undefined ||
-    settings.waitlistEnabled !== undefined
+    settings.waitlistEnabled !== undefined ||
+    settings.waitlistTitle !== undefined ||
+    settings.waitlistDescription !== undefined ||
+    settings.showWaitlistCopyright !== undefined ||
+    settings.waitlistCtaTitle !== undefined ||
+    settings.waitlistCtaDescription !== undefined ||
+    settings.waitlistCtaButtonText !== undefined
   )) {
     if (options.requirePersistentStore) {
       throw createPersistenceError(
