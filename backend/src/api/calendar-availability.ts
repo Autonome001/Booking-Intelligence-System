@@ -989,7 +989,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       personal_view_logo_url,
       personal_view_brand_name,
       personal_view_slug,
-      personal_view_calendar_email
+      personal_view_calendar_email,
+      personal_view_tagline
     } = req.body ?? {};
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const userEmail = resolveUserEmail(
@@ -1052,6 +1053,7 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         personalViewBrandName: personal_view_brand_name,
         personalViewSlug: personal_view_slug,
         personalViewCalendarEmail: personal_view_calendar_email,
+        personalViewTagline: personal_view_tagline,
       },
       config.defaultBookingWindowDays,
       {

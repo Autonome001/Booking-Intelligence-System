@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS booking_display_settings (
   personal_view_brand_name TEXT DEFAULT 'Jamelle Eugene',
   personal_view_slug TEXT DEFAULT 'jamelleeugene',
   personal_view_calendar_email TEXT,
-  personal_view_tagline TEXT DEFAULT 'Intelligence Reinvented',
+  personal_view_tagline TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -850,6 +850,7 @@ export async function saveAvailabilityDisplaySettings(
     personalViewBrandName: settings.personalViewBrandName ?? existing.personalViewBrandName,
     personalViewSlug: settings.personalViewSlug ?? existing.personalViewSlug,
     personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
+    personalViewTagline: settings.personalViewTagline ?? existing.personalViewTagline,
     updatedAt: new Date().toISOString(),
   };
 
