@@ -277,13 +277,22 @@ app.use('/api/calendar', calendarAvailabilityRouter);
 // Waitlist API
 app.use('/api/waitlist', waitlistRouter);
 
-// Early middleware: Serve personal view for ANY request on the personal domain
+// Early middleware: Serve personal view for page requests on the personal domain
 app.use((req: Request, res: Response, next: NextFunction): void => {
   const personalDomain = process.env['PERSONAL_BOOKING_DOMAIN'];
   const hostHeader = req.headers.host || '';
+  
   if (personalDomain && hostHeader.includes(personalDomain)) {
-    logger.info(`Serving personal view for host: ${req.hostname} on path ${req.path}`);
-    return res.sendFile(path.join(publicDir, 'personal.html'));
+    // skip for API calls and static assets
+    const isApiRequest = req.path.startsWith('/api/');
+    const isStaticAsset = /\.(js|css|png|jpg|jpeg|gif|ico|svg|json|html)$/.test(req.path);
+    
+    // We only want to intercept the "entry points" for the personal domain
+    // If it's the root path or the specific slug path on the personal domain
+    if (!isApiRequest && !isStaticAsset) {
+      logger.info(`Serving personal view for host: ${req.hostname} on path ${req.path}`);
+      return res.sendFile(path.join(publicDir, 'personal.html'));
+    }
   }
   next();
 });
