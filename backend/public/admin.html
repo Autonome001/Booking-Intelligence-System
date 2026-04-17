@@ -481,9 +481,21 @@
               <input type="text" id="personal-view-title" class="form-input" placeholder="e.g. Let's Connect">
             </div>
 
-            <div style="margin-bottom: 0;">
+            <div style="margin-bottom: 1.5rem;">
               <label class="form-label" for="personal-view-description">Page Description Override</label>
               <textarea id="personal-view-description" class="form-input" rows="2" placeholder="Schedule a casual meeting..."></textarea>
+            </div>
+
+            <div class="admin-settings-grid" style="border-top: 1px solid var(--gray-200); padding-top: 1.5rem; margin-top: 1rem;">
+              <div class="admin-setting-copy">
+                <label class="form-label" for="personal-view-ai-concierge-enabled">AI Booking Concierge (Personal)</label>
+                <p class="admin-settings-summary">Show the “Need a better time?” AI helper specifically on your personal page.</p>
+              </div>
+              <label class="admin-toggle-switch" for="personal-view-ai-concierge-enabled">
+                <input type="checkbox" id="personal-view-ai-concierge-enabled" checked>
+                <span class="admin-toggle-slider"></span>
+                <span class="admin-toggle-label">Enable Concierge</span>
+              </label>
             </div>
           </div>
           

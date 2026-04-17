@@ -195,7 +195,14 @@ async function checkAvailabilityFeatureFlag() {
       7,
       Math.min(60, parseInt(data.displayWindowDays ?? data.display_window_days, 10) || 20)
     );
-    aiConciergeEnabled = (data.aiConciergeEnabled ?? data.ai_concierge_enabled) !== false;
+    
+    // Priority: Personal View toggle if active, otherwise Corporate toggle
+    const corporateConciergeEnabled = (data.aiConciergeEnabled ?? data.ai_concierge_enabled) !== false;
+    if (window.isPersonalViewActive) {
+      aiConciergeEnabled = data.personalViewAiConciergeEnabled !== false;
+    } else {
+      aiConciergeEnabled = corporateConciergeEnabled;
+    }
 
     const waitlistBanner = document.getElementById('waitlist-banner');
     if (waitlistEnabled && waitlistBanner) {
@@ -1051,7 +1058,7 @@ function showSuccess(result) {
 
   if (result.calendar_confirmed) {
     successTitle.textContent = 'Consultation Booked';
-    successBody.textContent = 'Your consultation is confirmed. A branded confirmation email with the meeting details has been sent to your email address.';
+    successBody.textContent = 'Your consultation is confirmed. A confirmation email with the meeting details has been sent to your email address.';
 
     const detailParts = [];
     if (result.confirmed_start) {

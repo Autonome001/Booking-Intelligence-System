@@ -95,6 +95,7 @@ function buildPublicDisplaySettingsPayload(
     personalViewSlug: isPersonalDomainMatch ? (process.env['PERSONAL_BOOKING_SLUG'] || displaySettings.personalViewSlug) : displaySettings.personalViewSlug,
     personalViewCalendarEmail: displaySettings.personalViewCalendarEmail,
     personalViewTagline: displaySettings.personalViewTagline,
+    personalViewAiConciergeEnabled: displaySettings.personalViewAiConciergeEnabled,
     waitlistUrl: buildWaitlistUrl(userEmail),
   };
 }
@@ -990,7 +991,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       personal_view_brand_name,
       personal_view_slug,
       personal_view_calendar_email,
-      personal_view_tagline
+      personal_view_tagline,
+      personal_view_ai_concierge_enabled
     } = req.body ?? {};
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const userEmail = resolveUserEmail(
@@ -1054,6 +1056,8 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         personalViewSlug: personal_view_slug,
         personalViewCalendarEmail: personal_view_calendar_email,
         personalViewTagline: personal_view_tagline,
+        personalViewAiConciergeEnabled:
+          typeof personal_view_ai_concierge_enabled === 'boolean' ? personal_view_ai_concierge_enabled : undefined,
       },
       config.defaultBookingWindowDays,
       {

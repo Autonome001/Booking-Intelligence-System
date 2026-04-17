@@ -22,6 +22,7 @@ export interface AvailabilityDisplaySettings {
   personalViewSlug?: string;
   personalViewCalendarEmail?: string;
   personalViewTagline?: string;
+  personalViewAiConciergeEnabled?: boolean;
   createdAt?: string;
   updatedAt: string;
 }
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS booking_display_settings (
   personal_view_slug TEXT DEFAULT 'jamelleeugene',
   personal_view_calendar_email TEXT,
   personal_view_tagline TEXT DEFAULT '',
+  personal_view_ai_concierge_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -106,6 +108,8 @@ ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS personal_view_calendar_email TEXT;
 ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS personal_view_tagline TEXT DEFAULT 'Intelligence Reinvented';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_ai_concierge_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 NOTIFY pgrst, 'reload schema';
 `;
 
@@ -199,6 +203,7 @@ function getFileBackedSettings(
     personalViewSlug: storedSettings?.personalViewSlug ?? 'jamelleeugene',
     personalViewCalendarEmail: storedSettings?.personalViewCalendarEmail ?? '',
     personalViewTagline: storedSettings?.personalViewTagline ?? 'Intelligence Reinvented',
+    personalViewAiConciergeEnabled: storedSettings?.personalViewAiConciergeEnabled ?? true,
     createdAt: storedSettings?.createdAt || new Date().toISOString(),
     updatedAt: storedSettings?.updatedAt || new Date().toISOString(),
   };
@@ -251,6 +256,7 @@ function saveFileBackedSettings(
     personalViewSlug: settings.personalViewSlug ?? existing.personalViewSlug,
     personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
     personalViewTagline: settings.personalViewTagline ?? existing.personalViewTagline,
+    personalViewAiConciergeEnabled: settings.personalViewAiConciergeEnabled ?? existing.personalViewAiConciergeEnabled,
     createdAt: existing.createdAt, // createdAt is not updated on save
     updatedAt: new Date().toISOString(),
   };
@@ -426,6 +432,13 @@ async function ensureNecessaryColumns(
     .limit(1);
   const personalViewMissing = isBookingDisplaySettingsColumnMissing(probePersonalView.error, 'personal_view_enabled');
 
+  // Check for personal view concierge column
+  const probePersonalConcierge = await supabase
+    .from('booking_display_settings')
+    .select('personal_view_ai_concierge_enabled')
+    .limit(1);
+  const personalConciergeMissing = isBookingDisplaySettingsColumnMissing(probePersonalConcierge.error, 'personal_view_ai_concierge_enabled');
+
 
   if (
     !noticeMissing
@@ -438,6 +451,7 @@ async function ensureNecessaryColumns(
     && !ctaDescriptionMissing
     && !ctaButtonTextMissing
     && !personalViewMissing
+    && !personalConciergeMissing
   ) {
     return { ready: true, repaired: false };
   }
@@ -502,6 +516,7 @@ async function persistDatabaseBackedSettings(
     payload['personal_view_slug'] = nextSettings.personalViewSlug;
     payload['personal_view_calendar_email'] = nextSettings.personalViewCalendarEmail;
     payload['personal_view_tagline'] = nextSettings.personalViewTagline;
+    payload['personal_view_ai_concierge_enabled'] = nextSettings.personalViewAiConciergeEnabled;
   }
 
   const { data, error } = await supabase
@@ -591,6 +606,10 @@ async function persistDatabaseBackedSettings(
       typeof data['personal_view_tagline'] === 'string'
         ? data['personal_view_tagline']
         : nextSettings.personalViewTagline,
+    personalViewAiConciergeEnabled:
+      typeof data['personal_view_ai_concierge_enabled'] === 'boolean'
+        ? data['personal_view_ai_concierge_enabled']
+        : nextSettings.personalViewAiConciergeEnabled,
     createdAt:
       typeof data['created_at'] === 'string' && data['created_at']
         ? data['created_at']
@@ -739,6 +758,10 @@ export async function getAvailabilityDisplaySettings(
       typeof data['personal_view_tagline'] === 'string'
         ? data['personal_view_tagline']
         : fallbackSettings.personalViewTagline,
+    personalViewAiConciergeEnabled:
+      typeof data['personal_view_ai_concierge_enabled'] === 'boolean'
+        ? data['personal_view_ai_concierge_enabled']
+        : fallbackSettings.personalViewAiConciergeEnabled,
     updatedAt:
       typeof data['updated_at'] === 'string' && data['updated_at']
         ? data['updated_at']
@@ -803,7 +826,8 @@ export async function saveAvailabilityDisplaySettings(
     settings.personalViewBrandName !== undefined ||
     settings.personalViewSlug !== undefined ||
     settings.personalViewCalendarEmail !== undefined ||
-    settings.personalViewTagline !== undefined
+    settings.personalViewTagline !== undefined ||
+    settings.personalViewAiConciergeEnabled !== undefined
   )) {
     if (options.requirePersistentStore) {
       throw createPersistenceError(

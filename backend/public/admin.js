@@ -681,6 +681,11 @@ async function loadDisplaySettings() {
     const personalViewTagline = document.getElementById('personal-view-tagline');
     if (personalViewTagline) personalViewTagline.value = settings.personalViewTagline || '';
 
+    const personalConciergeToggle = document.getElementById('personal-view-ai-concierge-enabled');
+    if (personalConciergeToggle) {
+      personalConciergeToggle.checked = settings.personalViewAiConciergeEnabled !== false;
+    }
+
     minimumNoticeInput.value = settings.minimumNoticeMinutes ?? 30;
     updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
     
@@ -759,6 +764,7 @@ async function savePersonalViewSettings(event) {
   const personalViewTitle = document.getElementById('personal-view-title').value;
   const personalViewDescription = document.getElementById('personal-view-description').value;
   const personalViewTagline = document.getElementById('personal-view-tagline').value;
+  const personalViewAiConciergeEnabled = document.getElementById('personal-view-ai-concierge-enabled').checked;
 
   setButtonLoading(saveButton, true, 'Saving...');
 
@@ -776,6 +782,7 @@ async function savePersonalViewSettings(event) {
         personal_view_title: personalViewTitle,
         personal_view_description: personalViewDescription,
         personal_view_tagline: personalViewTagline,
+        personal_view_ai_concierge_enabled: personalViewAiConciergeEnabled,
       }),
     });
 
