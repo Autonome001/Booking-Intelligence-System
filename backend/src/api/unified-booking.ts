@@ -583,20 +583,7 @@ async function processEmergencyMode(
 
     const bookingRecordVariants: Array<Record<string, unknown>> = [
       {
-        form_submission_id: requestId,
-        customer_name: bookingData.name,
-        email_from: bookingData.email,
-        company_name: bookingData.company || null,
-        phone_number: bookingData.phone || null,
-        email_body: bookingData.message,
-        inquiry_type: bookingData.inquiry_type || 'strategy_call',
-        preferred_date: bookingData.preferred_date || null,
-        status: 'pending',
         processing_id: requestId,
-        metadata,
-      },
-      {
-        form_submission_id: requestId,
         customer_name: bookingData.name,
         email_from: bookingData.email,
         company_name: bookingData.company || null,
@@ -608,19 +595,11 @@ async function processEmergencyMode(
         metadata,
       },
       {
-        form_submission_id: requestId,
+        processing_id: requestId,
         customer_name: bookingData.name,
         email_from: bookingData.email,
-        company_name: bookingData.company || null,
-        phone_number: bookingData.phone || null,
         email_body: bookingData.message,
         status: 'pending',
-      },
-      {
-        form_submission_id: requestId,
-        customer_name: bookingData.name,
-        email_from: bookingData.email,
-        email_body: bookingData.message,
       },
       {
         customer_name: bookingData.name,

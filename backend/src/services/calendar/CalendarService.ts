@@ -766,7 +766,37 @@ export class CalendarService {
       throw new Error(`Selection hold ${holdId} is no longer active`);
     }
 
-    const event = await provider.confirmProvisionalHold(providerHoldId, eventDetails);
+    let event: CalendarEvent;
+    try {
+      event = await provider.confirmProvisionalHold(providerHoldId, eventDetails);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isHoldMissing = errorMessage.includes('could not be found') || 
+                             errorMessage.includes('404') ||
+                             errorMessage.toLowerCase().includes('not found');
+      
+      if (isHoldMissing) {
+        logger.warn(`Provisional hold ${providerHoldId} missing during confirmation, creating new event as fallback.`);
+        
+        // Recover by creating a brand new event for the same slot
+        // Slot information is available in the metadata if we stored it, 
+        // but for selection holds we usually have the slot in the DB record
+        const slotStart = persistedHold['slot_start'] ? new Date(persistedHold['slot_start'] as string) : undefined;
+        const slotEnd = persistedHold['slot_end'] ? new Date(persistedHold['slot_end'] as string) : undefined;
+        
+        if (!slotStart || !slotEnd) {
+           throw new Error(`Failed to recover missing hold: Slot timing information missing in database for hold ${holdId}`);
+        }
+
+        event = await provider.createEvent({
+          ...eventDetails,
+          start: slotStart,
+          end: slotEnd,
+        });
+      } else {
+        throw error;
+      }
+    }
 
     await this.supabase
       .from('provisional_holds')

@@ -281,17 +281,17 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       }
 
       // If the event is already gone (404), throw descriptive error
-      const isNotFound = error instanceof Error && error.message.includes('404') || 
-                         (error as any)?.code === 404 || 
-                         (error as any)?.response?.status === 404;
-      
+      const isNotFound = (error as any)?.code === 404 || 
+                         (error instanceof Error && (
+                           error.message.includes('404') || 
+                           error.message.toLowerCase().includes('not found')
+                         ));
+
       if (isNotFound) {
-        throw new ProvisionalHoldError(
-          this.providerId,
-          `Failed to confirm: Hold event ${calendarEventId} could not be found. It may have been deleted or expired.`
-        );
+        throw new Error(`Failed to confirm: Hold event ${calendarEventId} could not be found. It may have been deleted or expired.`);
       }
 
+      console.error('Failed to confirm provisional hold on Google Calendar:', error);
       throw new ProvisionalHoldError(
         this.providerId,
         `Failed to confirm provisional hold: ${error instanceof Error ? error.message : 'Unknown error'}`
