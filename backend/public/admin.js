@@ -55,16 +55,47 @@ async function readJsonResponse(response) {
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
   initAccessCodeProtection();
-  await loadSystemStatus();
-  await loadCalendars();
+  
+  // Safe load function to prevent one failure from blocking others
+  const safeLoad = async (fn, label) => {
+    try {
+      await fn();
+    } catch (err) {
+      console.error(`[Admin] Failed to load ${label}:`, err);
+    }
+  };
+
+  await safeLoad(loadSystemStatus, 'System Status');
+  await safeLoad(loadCalendars, 'Calendars');
+  
   setupConnectButton();
   setupBookingDestinationControls();
   setupAvailabilityTabs();
   setupDisplaySettingsForm();
   setupPersonalViewSettingsForm();
   setupNotificationSettingsForm();
-  await loadDisplaySettings();
-  await loadNotificationSettings();
+  
+  // Settings initialization
+  await safeLoad(loadDisplaySettings, 'Display Settings');
+  await safeLoad(loadNotificationSettings, 'Notification Settings');
+  await safeLoad(loadBlackouts, 'Blackout Periods');
+  await safeLoad(loadWorkingHours, 'Working Hours');
+  
+  // Restore form submission handlers
+  const blackoutForm = document.getElementById('blackout-form');
+  if (blackoutForm) {
+    blackoutForm.addEventListener('submit', addBlackout);
+  } else {
+    console.warn('[Admin] Blackout form not found during init');
+  }
+
+  const workingHoursForm = document.getElementById('working-hours-form');
+  if (workingHoursForm) {
+    workingHoursForm.addEventListener('submit', saveWorkingHours);
+  } else {
+    console.warn('[Admin] Working hours form not found during init');
+  }
+
   switchTab('blackouts');
   checkOAuthCallback();
 });
@@ -1753,22 +1784,7 @@ async function saveWorkingHours(event) {
   }
 }
 
-// ============================================
-// INITIALIZE AVAILABILITY SETTINGS
-// ============================================
-document.addEventListener('DOMContentLoaded', async () => {
-  // Load blackouts and working hours on page load
-  await loadBlackouts();
-  await loadWorkingHours();
-
-  // Setup form handlers
-  document.getElementById('blackout-form').addEventListener('submit', addBlackout);
-  document.getElementById('working-hours-form').addEventListener('submit', saveWorkingHours);
-  
-  // Custom View Init
-  setupPersonalViewSettingsForm();
-  await loadDisplaySettings();
-});
+// Event listeners are handled in the main DOMContentLoaded block
 
 // Make functions globally available for onclick handlers
 window.disconnectCalendar = disconnectCalendar;

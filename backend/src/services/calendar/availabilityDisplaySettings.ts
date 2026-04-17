@@ -875,6 +875,7 @@ export async function saveAvailabilityDisplaySettings(
     personalViewSlug: settings.personalViewSlug ?? existing.personalViewSlug,
     personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
     personalViewTagline: settings.personalViewTagline ?? existing.personalViewTagline,
+    personalViewAiConciergeEnabled: settings.personalViewAiConciergeEnabled ?? existing.personalViewAiConciergeEnabled,
     updatedAt: new Date().toISOString(),
   };
 
