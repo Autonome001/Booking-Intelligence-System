@@ -11,6 +11,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '../../utils/logger.js';
 import { GoogleCalendarProvider, GoogleCalendarConfig } from './providers/GoogleCalendarProvider.js';
 import { ensureCalendarAccountsTable } from './calendarAccountsSchema.js';
 import {
@@ -540,6 +541,7 @@ export class CalendarService {
     this.clearAvailabilityCache();
   }
 
+
   /**
    * Cleanup expired provisional holds (called by cron job)
    */
@@ -558,15 +560,24 @@ export class CalendarService {
 
     for (const hold of expiredHolds) {
       try {
-        await this.releaseProvisionalHolds(hold.id);
+        // Attempt release, but continue to status update even if it fails
+        await this.releaseProvisionalHolds(hold.id).catch((err) => {
+          logger.warn(`Cleanup: Failed to release provider holds for ${hold.id}, proceeding to mark as expired:`, err.message);
+        });
 
-        // Mark as expired
+        // Mark as expired in database to stop further cleanup attempts
         await this.supabase
           .from('provisional_holds')
-          .update({ status: 'expired' })
+          .update({ 
+            status: 'expired',
+            metadata: { 
+              ...(hold.metadata as Record<string, unknown> || {}),
+              cleanup_error: null 
+            }
+          })
           .eq('id', hold.id);
       } catch (error) {
-        console.error(`Failed to cleanup hold ${hold.id}:`, error);
+        logger.error(`Failed to cleanup hold ${hold.id}:`, error);
       }
     }
 
@@ -817,7 +828,12 @@ export class CalendarService {
       throw new Error(`Booking calendar provider ${providerId || 'unknown'} is not available`);
     }
 
-    await provider.releaseProvisionalHold(providerHoldId);
+    try {
+      await provider.releaseProvisionalHold(providerHoldId);
+    } catch (err) {
+      logger.warn(`Failed to release selection hold ${providerHoldId} on provider, but proceeding to release in DB:`, err instanceof Error ? err.message : err);
+    }
+
     await this.supabase
       .from('provisional_holds')
       .update({
