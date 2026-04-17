@@ -289,7 +289,7 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 });
 
 // Development shortcut: direct access to personal view
-app.get('/personal', (req: Request, res: Response): void => {
+app.get('/personal', (_req: Request, res: Response): void => {
   logger.info('Dev shortcut: serving personal view via /personal');
   return res.sendFile(path.join(publicDir, 'personal.html'));
 });
@@ -297,8 +297,8 @@ app.get('/personal', (req: Request, res: Response): void => {
 // Slug-based access (e.g., http://localhost:3001/jamelleeugene)
 app.get('/:slug', (req: Request, res: Response, next: NextFunction): void => {
   const expectedSlug = process.env['PERSONAL_BOOKING_SLUG'];
-  if (expectedSlug && req.params.slug === expectedSlug) {
-    logger.info(`Serving personal view for slug: ${req.params.slug}`);
+  if (expectedSlug && req.params['slug'] === expectedSlug) {
+    logger.info(`Serving personal view for slug: ${req.params['slug']}`);
     return res.sendFile(path.join(publicDir, 'personal.html'));
   }
   next();
