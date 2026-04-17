@@ -199,7 +199,13 @@ async function checkAvailabilityFeatureFlag() {
     // Priority: Personal View toggle if active, otherwise Corporate toggle
     const corporateConciergeEnabled = (data.aiConciergeEnabled ?? data.ai_concierge_enabled) !== false;
     if (window.isPersonalViewActive) {
-      aiConciergeEnabled = data.personalViewAiConciergeEnabled !== false;
+      // If personal flag is explicitly false, disable. Else if it's explicitly true or undefined (new record), use it.
+      // We check for false explicitly to allow disabling even if data is slightly malformed.
+      aiConciergeEnabled = data.personalViewAiConciergeEnabled === false ? false : 
+                         (data.personal_view_ai_concierge_enabled === false ? false : true);
+      
+      // If the corporate concierge is globally off, it should probably be off here too unless overridden?
+      // For now, we trust the personal toggle as an independent override.
     } else {
       aiConciergeEnabled = corporateConciergeEnabled;
     }

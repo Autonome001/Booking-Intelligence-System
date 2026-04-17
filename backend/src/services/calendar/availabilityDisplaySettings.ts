@@ -470,7 +470,7 @@ async function ensureNecessaryColumns(
 
   const verify = await supabase
     .from('booking_display_settings')
-    .select('minimum_notice_minutes, discovery_mode_enabled, waitlist_enabled, waitlist_title, waitlist_description, show_waitlist_copyright, waitlist_cta_title, waitlist_cta_description, waitlist_cta_button_text, personal_view_enabled, personal_view_title, personal_view_description, personal_view_logo_url, personal_view_brand_name, personal_view_slug, personal_view_calendar_email, personal_view_tagline')
+    .select('minimum_notice_minutes, discovery_mode_enabled, waitlist_enabled, waitlist_title, waitlist_description, show_waitlist_copyright, waitlist_cta_title, waitlist_cta_description, waitlist_cta_button_text, personal_view_enabled, personal_view_title, personal_view_description, personal_view_logo_url, personal_view_brand_name, personal_view_slug, personal_view_calendar_email, personal_view_tagline, personal_view_ai_concierge_enabled')
     .limit(1);
 
   if (verify.error) {
