@@ -315,7 +315,7 @@ app.get('/admin', (_req: Request, res: Response): void => {
 
 // Dynamic Vanity URL (Personal View) Fallback
 app.get(['/:slug', '/Schedule/:slug'], (req: Request, res: Response, next: NextFunction): void => {
-  const slug = req.params.slug;
+  const slug = req.params['slug'];
   
   // Avoid intercepting known static assets if they somehow got past static middleware
   const ext = path.extname(slug || '').toLowerCase();
