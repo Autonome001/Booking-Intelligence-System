@@ -80,6 +80,13 @@ CREATE TABLE IF NOT EXISTS booking_display_settings (
     waitlist_cta_title TEXT DEFAULT 'High Demand: Alternative Path Available',
     waitlist_cta_description TEXT DEFAULT 'Can''t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.',
     waitlist_cta_button_text TEXT DEFAULT 'Join Priority Waitlist',
+    personal_view_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    personal_view_title TEXT DEFAULT 'Let''s Connect',
+    personal_view_description TEXT DEFAULT 'Schedule a personal meeting or informal catch-up.',
+    personal_view_logo_url TEXT,
+    personal_view_brand_name TEXT DEFAULT 'Jamelle Eugene',
+    personal_view_slug TEXT DEFAULT 'jamelleeugene',
+    personal_view_calendar_email TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

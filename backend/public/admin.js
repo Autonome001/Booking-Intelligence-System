@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupBookingDestinationControls();
   setupAvailabilityTabs();
   setupDisplaySettingsForm();
+  setupPersonalViewSettingsForm();
   setupNotificationSettingsForm();
   await loadDisplaySettings();
   await loadNotificationSettings();
@@ -154,6 +155,7 @@ async function loadCalendars() {
     const data = await response.json();
     connectedCalendars = data.calendars || [];
     renderBookingDestinationSelector();
+    renderPersonalViewCalendarSelector();
 
     if (warningDisplay) {
       if (data.warning) {
@@ -282,6 +284,19 @@ function updateBookingDestinationSummary(calendarEmail) {
   }
 
   summary.textContent = `Confirmed consultations currently post to ${calendarEmail}. Customer-facing availability follows the booking destination calendar.`;
+}
+
+function renderPersonalViewCalendarSelector() {
+  const select = document.getElementById('personal-view-calendar-email');
+  if (!select) return;
+
+  const currentVal = select.dataset.value || select.value;
+
+  select.innerHTML = '<option value="">Default (Same as primary Booking Destination)</option>' + connectedCalendars.map((calendar) => `
+    <option value="${calendar.calendar_email}" ${currentVal === calendar.calendar_email ? 'selected' : ''}>
+      ${calendar.calendar_email}
+    </option>
+  `).join('');
 }
 
 function setupBookingDestinationControls() {
@@ -617,13 +632,81 @@ async function loadDisplaySettings() {
     if (waitlistCopyright) waitlistCopyright.checked = settings.showWaitlistCopyright !== false;
     if (waitlistCtaTitle) waitlistCtaTitle.value = settings.waitlistCtaTitle || '';
     if (waitlistCtaDescription) waitlistCtaDescription.value = settings.waitlistCtaDescription || '';
-    if (waitlistCtaButtonText) waitlistCtaButtonText.value = settings.waitlistCtaButtonText || '';
+    if (data.settings?.waitlistCtaButtonText !== undefined) {
+      document.getElementById('waitlist-cta-button-text').value = data.settings.waitlistCtaButtonText;
+    }
+
+    const personalViewToggle = document.getElementById('personal-view-enabled');
+    const personalViewConfig = document.getElementById('personal-view-config');
+    if (personalViewToggle) {
+      personalViewToggle.checked = settings.personalViewEnabled || false;
+      personalViewConfig.style.display = personalViewToggle.checked ? 'block' : 'none';
+      personalViewToggle.addEventListener('change', () => {
+        const isChecked = personalViewToggle.checked;
+        personalViewConfig.style.display = isChecked ? 'block' : 'none';
+        
+        // Dynamic update of preview link visibility
+        const personalPreview = document.getElementById('personal-scheduler-preview');
+        if (personalPreview) {
+          if (isChecked && settings.personalViewSlug) {
+            personalPreview.classList.remove('hidden');
+          } else {
+            personalPreview.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    const personalViewSlug = document.getElementById('personal-view-slug');
+    if (personalViewSlug) personalViewSlug.value = settings.personalViewSlug || '';
+
+    const personalViewCalendarEmail = document.getElementById('personal-view-calendar-email');
+    if (personalViewCalendarEmail) {
+       personalViewCalendarEmail.value = settings.personalViewCalendarEmail || '';
+       personalViewCalendarEmail.dataset.value = settings.personalViewCalendarEmail || '';
+    }
+    
+    const personalViewBrandName = document.getElementById('personal-view-brand-name');
+    if (personalViewBrandName) personalViewBrandName.value = settings.personalViewBrandName || '';
+
+    const personalViewLogoUrl = document.getElementById('personal-view-logo-url');
+    if (personalViewLogoUrl) personalViewLogoUrl.value = settings.personalViewLogoUrl || '';
+
+    const personalViewTitle = document.getElementById('personal-view-title');
+    if (personalViewTitle) personalViewTitle.value = settings.personalViewTitle || '';
+
+    const personalViewDescription = document.getElementById('personal-view-description');
+    if (personalViewDescription) personalViewDescription.value = settings.personalViewDescription || '';
+
+    const personalViewTagline = document.getElementById('personal-view-tagline');
+    if (personalViewTagline) personalViewTagline.value = settings.personalViewTagline || '';
 
     minimumNoticeInput.value = settings.minimumNoticeMinutes ?? 30;
     updateDisplayWindowPreview(rangeInput.value, minimumNoticeInput.value);
+    
+    // Update preview links
+    updatePreviewLinks(settings);
   } catch (error) {
     console.error('Failed to load display settings:', error);
     showNotification('error', error.message || 'Failed to load booking display settings');
+  }
+}
+
+function updatePreviewLinks(settings) {
+  const personalPreview = document.getElementById('personal-scheduler-preview');
+  if (!personalPreview) return;
+
+  const isEnabled = settings.personalViewEnabled || false;
+  const slug = settings.personalViewSlug || '';
+
+  if (isEnabled && slug.trim()) {
+    personalPreview.classList.remove('hidden');
+    // Normalize: remove leading slashes and add a single one
+    const cleanSlug = slug.trim().replace(/^\/+/, '');
+    personalPreview.href = `/${cleanSlug}`;
+  } else {
+    personalPreview.classList.add('hidden');
+    personalPreview.href = '#';
   }
 }
 
@@ -655,6 +738,65 @@ function setupDisplaySettingsForm() {
   });
 
   form.addEventListener('submit', saveDisplaySettings);
+}
+
+function setupPersonalViewSettingsForm() {
+  const form = document.getElementById('personal-view-settings-form');
+  if (form) {
+    form.addEventListener('submit', savePersonalViewSettings);
+  }
+}
+
+async function savePersonalViewSettings(event) {
+  event.preventDefault();
+
+  const saveButton = document.getElementById('save-personal-view-btn');
+  const personalViewEnabled = document.getElementById('personal-view-enabled').checked;
+  const personalViewSlug = document.getElementById('personal-view-slug').value;
+  const personalViewCalendarEmail = document.getElementById('personal-view-calendar-email').value;
+  const personalViewBrandName = document.getElementById('personal-view-brand-name').value;
+  const personalViewLogoUrl = document.getElementById('personal-view-logo-url').value;
+  const personalViewTitle = document.getElementById('personal-view-title').value;
+  const personalViewDescription = document.getElementById('personal-view-description').value;
+  const personalViewTagline = document.getElementById('personal-view-tagline').value;
+
+  setButtonLoading(saveButton, true, 'Saving...');
+
+  try {
+    const response = await fetch('/api/calendar/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: USER_EMAIL,
+        personal_view_enabled: personalViewEnabled,
+        personal_view_slug: personalViewSlug,
+        personal_view_calendar_email: personalViewCalendarEmail,
+        personal_view_brand_name: personalViewBrandName,
+        personal_view_logo_url: personalViewLogoUrl,
+        personal_view_title: personalViewTitle,
+        personal_view_description: personalViewDescription,
+        personal_view_tagline: personalViewTagline,
+      }),
+    });
+
+    const result = await readJsonResponse(response);
+
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || 'Failed to save personal view settings');
+    }
+
+    showNotification('success', 'Personal view settings saved successfully');
+    
+    // Update preview links immediately after saving
+    if (result.settings) {
+      updatePreviewLinks(result.settings);
+    }
+  } catch (error) {
+    console.error('Failed to save personal view settings:', error);
+    showNotification('error', error.message || 'Failed to save personal view settings');
+  } finally {
+    setButtonLoading(saveButton, false);
+  }
 }
 
 async function saveDisplaySettings(event) {
@@ -1615,6 +1757,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup form handlers
   document.getElementById('blackout-form').addEventListener('submit', addBlackout);
   document.getElementById('working-hours-form').addEventListener('submit', saveWorkingHours);
+  
+  // Custom View Init
+  setupPersonalViewSettingsForm();
+  await loadDisplaySettings();
 });
 
 // Make functions globally available for onclick handlers

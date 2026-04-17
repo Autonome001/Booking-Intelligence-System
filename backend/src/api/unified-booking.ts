@@ -40,6 +40,7 @@ interface BookingData {
   booking_session_id?: string;
   user_agent?: string;
   ai_concierge_engaged?: boolean;
+  calendar_email_override?: string;
 }
 
 /**

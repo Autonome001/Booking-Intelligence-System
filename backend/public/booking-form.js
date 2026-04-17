@@ -21,6 +21,10 @@ const BOOKING_USER_EMAIL = resolveBookingUserEmail();
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Load branding and feature config first
+  await checkAvailabilityFeatureFlag();
+
+  // 2. Initialize UI with the known branding context
   applyDisplayMode();
   document.getElementById('booking-session-id').value = bookingSessionId;
   setupFormValidation();
@@ -29,7 +33,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupWeekNavigation();
   setupBookingChat();
   setupAvailabilityAutoRefresh();
-  await checkAvailabilityFeatureFlag();
 });
 
 function resolveBookingUserEmail() {
@@ -78,6 +81,100 @@ async function checkAvailabilityFeatureFlag() {
       cache: 'no-store',
     });
     const data = await response.json();
+    
+    // Check if this is a vanity URL view
+    const pathSegments = window.location.pathname.split('/').filter(s => s);
+    const normalizeSlug = (s) => (s || '').replace(/^\/+|\/+$/g, '').toLowerCase().trim();
+
+    if (pathSegments.length > 0 && !['embed', 'waitlist', 'admin'].includes(pathSegments[0].toLowerCase())) {
+      const pathSlug = pathSegments[0].toLowerCase() === 'schedule' && pathSegments.length > 1 
+        ? pathSegments[1] 
+        : pathSegments[0];
+
+      const normalizedPathSlug = normalizeSlug(decodeURIComponent(pathSlug));
+      const normalizedConfigSlug = normalizeSlug(data.personalViewSlug);
+      
+      console.log('[PersonalView] Checking slug match:', { 
+        pathSlug: normalizedPathSlug, 
+        configSlug: normalizedConfigSlug,
+        enabled: data.personalViewEnabled,
+        fullPath: window.location.pathname
+      });
+
+      if (data.personalViewEnabled && normalizedConfigSlug === normalizedPathSlug) {
+         console.log('[PersonalView] Match found. Applying tailored branding...');
+         
+         const isPersonalView = true;
+         window.isPersonalViewActive = true;
+
+         // 1. Page Title
+         document.title = data.personalViewTitle || data.personalViewBrandName || "Your Consultation";
+         
+         // 2. Personal Logo & Tagline Logic
+         const logoContainer = document.getElementById('personal-logo-container');
+         const logoImg = document.getElementById('personal-logo-img');
+         const logoTagline = document.getElementById('personal-brand-tagline');
+         
+         // Logo visibility (Only if URL is specified)
+         if (logoContainer && logoImg && data.personalViewLogoUrl) {
+           logoImg.src = data.personalViewLogoUrl;
+           logoContainer.style.display = 'block';
+         } else if (logoContainer) {
+           logoContainer.style.display = 'none';
+         }
+
+         // Tagline visibility (Independent of Logo)
+         if (logoTagline) {
+           if (data.personalViewTagline) {
+             logoTagline.textContent = data.personalViewTagline;
+             logoTagline.style.display = 'block';
+           } else {
+             logoTagline.style.display = 'none';
+           }
+         }
+
+         // 3. Name & Headers
+         const brandNameDisplay = document.getElementById('personal-brand-name');
+         if (brandNameDisplay) {
+            brandNameDisplay.textContent = data.personalViewBrandName || "";
+            brandNameDisplay.style.display = data.personalViewBrandName ? 'block' : 'none';
+         }
+
+         const h2 = document.getElementById('personal-header-title');
+         if (h2) h2.textContent = data.personalViewTitle || "Schedule a Session";
+
+         const desc = document.getElementById('personal-header-desc');
+         if (desc && data.personalViewDescription) desc.textContent = data.personalViewDescription;
+
+         // 4. Clean Footer (Name Only)
+         const footerName = document.getElementById('footer-personal-name');
+         if (footerName) {
+           footerName.textContent = data.personalViewBrandName || "Booking System";
+         }
+         
+         // 5. Force Hide Waitlist Banner
+         const waitlistBanner = document.getElementById('waitlist-banner');
+         if (waitlistBanner) {
+           waitlistBanner.style.display = 'none';
+           waitlistBanner.classList.add('hidden');
+         }
+
+         // 6. Set Assistant Identity
+         window.personalAssistantName = data.personalViewBrandName 
+            ? `${data.personalViewBrandName}'s Assistant` 
+            : "Booking Assistant";
+
+         // 7. Calendar Override
+         if (data.personalViewCalendarEmail) {
+            window.activeCalendarEmailOverride = data.personalViewCalendarEmail;
+         }
+      } else {
+         console.warn('[PersonalView] Match check failed. Redirecting to home...');
+         window.location.href = '/';
+         return; // Stop execution
+      }
+    }
+
     const waitlistEnabled = data.waitlistEnabled === true;
     const waitlistUrl = typeof data.waitlistUrl === 'string' && data.waitlistUrl
       ? data.waitlistUrl
@@ -157,7 +254,7 @@ async function fetchAvailability(weekOffset) {
 
     const response = await fetch(
       appendBookingUserEmail(
-        `/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}`
+        `/api/calendar/availability?duration=30&days=7&start=${startDate.toISOString()}${window.activeCalendarEmailOverride ? '&calendar_email_override=' + encodeURIComponent(window.activeCalendarEmailOverride) : ''}`
       ),
       {
         cache: 'no-store',
@@ -387,6 +484,7 @@ async function reserveSelectedSlot(slot) {
       slot_end: slot.end,
       expiration_minutes: 15,
       ...(BOOKING_USER_EMAIL ? { user_email: BOOKING_USER_EMAIL } : {}),
+      ...(window.activeCalendarEmailOverride ? { calendar_email_override: window.activeCalendarEmailOverride } : {}),
     }),
   });
 
@@ -555,7 +653,8 @@ function createChatMessageElement(role, content) {
   const item = document.createElement('div');
   item.className = `chat-message ${role}`;
 
-  const label = role === 'assistant' ? 'Autonome Concierge' : 'You';
+  const assistantLabel = window.personalAssistantName || 'Autonome Concierge';
+  const label = role === 'assistant' ? assistantLabel : 'You';
   item.innerHTML = `
     <div class="chat-message-label ${role}">${label}</div>
     <div class="chat-bubble">${content.replace(/\n/g, '<br>')}</div>
@@ -643,7 +742,11 @@ function setupBookingChat() {
 
   bookingChatHistory = [];
   container.innerHTML = '';
-  appendChatMessage('assistant', 'I can help like a live scheduling concierge. Tell me your ideal day, time range, urgency, or any constraints, and I will narrow the best options intelligently.');
+  const defaultGreeting = 'I can help like a live scheduling concierge. Tell me your ideal day, time range, urgency, or any constraints, and I will narrow the best options intelligently.';
+  const personalGreeting = 'I can help you find the best time for our session. Just let me know your preferences, and I will assist you in mapping out our meeting.';
+  const greeting = window.isPersonalViewActive ? personalGreeting : defaultGreeting;
+  
+  appendChatMessage('assistant', greeting);
 
   sendButton.addEventListener('click', sendBookingChatMessage);
   input.addEventListener('keydown', (event) => {
@@ -851,6 +954,7 @@ function setupFormSubmission() {
       phone: document.getElementById('phone').value.trim(),
       message: document.getElementById('message').value.trim(),
       ai_concierge_engaged: hasUserChatContext(),
+      calendar_email_override: window.activeCalendarEmailOverride || undefined,
     };
 
     if (!formData.message && hasUserChatContext()) {

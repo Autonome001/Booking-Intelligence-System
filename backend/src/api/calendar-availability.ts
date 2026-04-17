@@ -85,6 +85,14 @@ function buildPublicDisplaySettingsPayload(
     waitlistCtaTitle: displaySettings.waitlistCtaTitle,
     waitlistCtaDescription: displaySettings.waitlistCtaDescription,
     waitlistCtaButtonText: displaySettings.waitlistCtaButtonText,
+    personalViewEnabled: displaySettings.personalViewEnabled,
+    personalViewTitle: displaySettings.personalViewTitle,
+    personalViewDescription: displaySettings.personalViewDescription,
+    personalViewLogoUrl: displaySettings.personalViewLogoUrl,
+    personalViewBrandName: displaySettings.personalViewBrandName,
+    personalViewSlug: displaySettings.personalViewSlug,
+    personalViewCalendarEmail: displaySettings.personalViewCalendarEmail,
+    personalViewTagline: displaySettings.personalViewTagline,
     waitlistUrl: buildWaitlistUrl(userEmail),
   };
 }
@@ -571,6 +579,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
       maxSlots: responseSlotLimit,
       bufferMinutes: 0,
       slotIntervalMinutes: config.slotIntervalMinutes,
+      calendarEmailOverride: typeof req.query['calendar_email_override'] === 'string' ? req.query['calendar_email_override'] : undefined,
     });
 
     const providers = calendarService.getProviders();
@@ -767,7 +776,7 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
 router.post('/holds/selection', async (req: Request, res: Response): Promise<void> => {
   try {
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
-    const { session_id, slot_start, slot_end, expiration_minutes, user_email } = req.body ?? {};
+    const { session_id, slot_start, slot_end, expiration_minutes, user_email, calendar_email_override } = req.body ?? {};
 
     if (!calendarService) {
       res.status(503).json({
@@ -821,7 +830,8 @@ router.post('/holds/selection', async (req: Request, res: Response): Promise<voi
     const hold = await calendarService.createSelectionHold(
       session_id.trim(),
       { start, end },
-      Number.isInteger(expiration_minutes) ? expiration_minutes : 15
+      Number.isInteger(expiration_minutes) ? expiration_minutes : 15,
+      typeof calendar_email_override === 'string' ? calendar_email_override : undefined
     );
 
     res.json({
@@ -964,7 +974,14 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
       show_waitlist_copyright,
       waitlist_cta_title,
       waitlist_cta_description,
-      waitlist_cta_button_text
+      waitlist_cta_button_text,
+      personal_view_enabled,
+      personal_view_title,
+      personal_view_description,
+      personal_view_logo_url,
+      personal_view_brand_name,
+      personal_view_slug,
+      personal_view_calendar_email
     } = req.body ?? {};
     const calendarService = await serviceManager.getService<CalendarService>('calendar');
     const userEmail = resolveUserEmail(
@@ -1019,6 +1036,14 @@ router.put('/preferences', async (req: Request, res: Response): Promise<void> =>
         waitlistCtaTitle: waitlist_cta_title,
         waitlistCtaDescription: waitlist_cta_description,
         waitlistCtaButtonText: waitlist_cta_button_text,
+        personalViewEnabled:
+          typeof personal_view_enabled === 'boolean' ? personal_view_enabled : undefined,
+        personalViewTitle: personal_view_title,
+        personalViewDescription: personal_view_description,
+        personalViewLogoUrl: personal_view_logo_url,
+        personalViewBrandName: personal_view_brand_name,
+        personalViewSlug: personal_view_slug,
+        personalViewCalendarEmail: personal_view_calendar_email,
       },
       config.defaultBookingWindowDays,
       {

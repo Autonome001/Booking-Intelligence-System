@@ -418,12 +418,92 @@
           </div>
         </form>
       </div>
+    </div>
 
-      <!-- Tab Navigation -->
-      <div
-        style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
-        <button type="button" id="blackouts-tab" class="tab-button active" data-tab="blackouts"
-          onclick="switchTab('blackouts')">
+    <!-- Personal/Informal Booking View Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <svg class="icon icon-lg" style="margin-right: 0.5rem; vertical-align: -4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          Personal / Informal View
+        </h3>
+        <p class="card-subtitle">Configure an alternative, less formal booking page with custom branding and URL.</p>
+      </div>
+
+      <div class="admin-settings-panel">
+        <form id="personal-view-settings-form">
+          <div class="admin-settings-grid">
+            <div class="admin-setting-copy">
+              <label class="form-label" for="personal-view-enabled">Enable Personal View</label>
+              <p class="admin-settings-summary">Activates the alternative booking page.</p>
+            </div>
+            <label class="admin-toggle-switch" for="personal-view-enabled">
+              <input type="checkbox" id="personal-view-enabled">
+              <span class="admin-toggle-slider"></span>
+              <span class="admin-toggle-label">Enabled</span>
+            </label>
+          </div>
+
+          <div id="personal-view-config" style="display: none; margin-top: 1.5rem; padding: 1.5rem; background: var(--gray-50); border-radius: 8px; border: 1px solid var(--gray-200);">
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-slug">Vanity URL Slug</label>
+              <input type="text" id="personal-view-slug" class="form-input" placeholder="e.g. JamelleEugene">
+              <p class="text-small text-muted" style="margin-top: 0.5rem;">Access the page via /your-slug</p>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-calendar-email">Specific Calendar Association</label>
+              <select id="personal-view-calendar-email" class="form-input">
+                <option value="">Default (Same as primary Booking Destination)</option>
+              </select>
+              <p class="text-small text-muted" style="margin-top: 0.5rem;">Route scheduled personal meetings to a specific connected calendar.</p>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-brand-name">Brand / Profile Name</label>
+              <input type="text" id="personal-view-brand-name" class="form-input" placeholder="e.g. Jamelle Eugene">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-tagline">Slogan / Tagline Override</label>
+              <input type="text" id="personal-view-tagline" class="form-input" placeholder="e.g. Intelligence Reinvented">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-logo-url">Logo / Profile Picture URL</label>
+              <input type="url" id="personal-view-logo-url" class="form-input" placeholder="https://...">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="form-label" for="personal-view-title">Page Title Override</label>
+              <input type="text" id="personal-view-title" class="form-input" placeholder="e.g. Let's Connect">
+            </div>
+
+            <div style="margin-bottom: 0;">
+              <label class="form-label" for="personal-view-description">Page Description Override</label>
+              <textarea id="personal-view-description" class="form-input" rows="2" placeholder="Schedule a casual meeting..."></textarea>
+            </div>
+          </div>
+          
+          <div style="margin-top: 2rem;">
+            <button type="submit" id="save-personal-view-btn" class="btn btn-primary btn-sm">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>Save Personal View Settings</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div
+      style="display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gray-200); padding: 0 1.5rem; margin-bottom: 1.5rem;">
+      <button type="button" id="blackouts-tab" class="tab-button active" data-tab="blackouts"
+        onclick="switchTab('blackouts')">
           <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
@@ -631,17 +711,31 @@
             experience without leaving the admin console.</p>
         </div>
 
-        <a href="/" target="_blank" rel="noopener noreferrer" class="admin-scheduler-cta">
-          <span class="admin-scheduler-cta-eyebrow">Customer Experience</span>
-          <span class="admin-scheduler-cta-title">Open Live Scheduler</span>
-          <span class="admin-scheduler-cta-copy">Preview the public booking page in a new tab.</span>
-          <span class="admin-scheduler-cta-action">
-            <span>Launch Preview</span>
-            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8" />
-            </svg>
-          </span>
-        </a>
+        <div class="admin-scheduler-ctas-container">
+          <a href="/" target="_blank" rel="noopener noreferrer" class="admin-scheduler-cta" id="main-scheduler-preview">
+            <span class="admin-scheduler-cta-eyebrow">Professional / Standard</span>
+            <span class="admin-scheduler-cta-title">Open Corporate Scheduler</span>
+            <span class="admin-scheduler-cta-copy">Preview the public professional booking page.</span>
+            <span class="admin-scheduler-cta-action">
+              <span>Launch Preview</span>
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8" />
+              </svg>
+            </span>
+          </a>
+
+          <a href="#" target="_blank" rel="noopener noreferrer" class="admin-scheduler-cta personal-view-cta hidden" id="personal-scheduler-preview">
+            <span class="admin-scheduler-cta-eyebrow">Personal / Informal</span>
+            <span class="admin-scheduler-cta-title">Open Personal Scheduler</span>
+            <span class="admin-scheduler-cta-copy">Preview your custom branded landing page.</span>
+            <span class="admin-scheduler-cta-action">
+              <span>Launch Personal View</span>
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H9M17 7v8" />
+              </svg>
+            </span>
+          </a>
+        </div>
       </div>
 
       <div class="admin-guide-grid">

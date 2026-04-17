@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule a Strategic Consultation | Autonome</title>
+  <meta name="description"
+    content="Book a private consultation with Autonome - Architects of Intelligent Systems for Businesses Ready to Scale.">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/Autonome - Logo Icon (Blue).png" type="image/png">
+</head>
+
+<body>
+  <!-- Header Section -->
+  <header id="page-header" class="header">
+      <div class="logo-container" id="personal-logo-container" style="display: none; margin-bottom: 2rem;">
+        <img src="" alt="Brand Logo" class="autonome-logo" id="personal-logo-img" width="80" height="80" style="border-radius: 50%; object-fit: cover;">
+      </div>
+      <h1 class="brand-name" id="personal-brand-name" style="margin-bottom: 0.5rem;">Autonome</h1>
+      <div class="brand-tagline" id="personal-brand-tagline" style="display: none; margin-bottom: 1.5rem; opacity: 0.8; font-size: 1.25rem; font-style: italic;"></div>
+      <h2 id="personal-header-title" style="margin-bottom: 0.5rem;">Strategic Consultation</h2>
+      <p id="personal-header-desc">Schedule a private session to architect your future.</p>
+    </div>
+  </header>
+
+  <!-- Main Content Section -->
+  <main class="container">
+    <!-- Feedback Alerts -->
+    <div id="success-message" class="alert alert-success hidden">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <div>
+        <strong id="success-title">Consultation Confirmed</strong>
+        <p id="success-body">Your request has been processed. A strategist will contact you shortly via our official
+          channels.</p>
+        <p id="success-details" class="text-sm opacity-70 hidden"></p>
+        <p class="text-sm opacity-70">Reference ID: <span id="booking-id-display" class="font-mono"></span></p>
+      </div>
+    </div>
+
+    <div id="error-message" class="alert alert-error hidden">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <div>
+        <strong>System Interruption</strong>
+        <p id="error-details">The system encountered an error while processing your request.</p>
+      </div>
+    </div>
+
+    <!-- Processing State -->
+    <div id="loading-state" class="text-center hidden">
+      <div class="loading-spinner"></div>
+      <p class="loading-terminal">SYNCHRONIZING WITH SYSTEM...</p>
+    </div>
+
+    <!-- Waitlist Invitation (Standalone View) -->
+    <div id="waitlist-banner" class="alert alert-waitlist hidden" style="margin-bottom: 2rem; background: var(--electric-blue-glow); border: 1px solid var(--electric-blue); display: flex; align-items: center; gap: 1.5rem; justify-content: space-between; padding: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--electric-blue);">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <div>
+          <strong id="waitlist-cta-title-display" style="color: var(--electric-blue); font-size: 1.1rem;">High Demand: Alternative Path Available</strong>
+          <p id="waitlist-cta-desc-display" style="margin: 0; opacity: 0.8;">Can't find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.</p>
+        </div>
+      </div>
+      <a href="/waitlist" id="waitlist-cta-btn-display" class="btn btn-secondary" style="white-space: nowrap; border-color: var(--electric-blue); color: var(--electric-blue);">Join Priority Waitlist</a>
+    </div>
+
+    <!-- Booking Workflow -->
+    <div class="workflow-container">
+      <!-- Step 1: Availability -->
+      <section id="availability-section" class="hidden">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              Select Availability
+            </h3>
+            <p class="card-subtitle">Choose a window for your strategic consultation</p>
+          </div>
+
+          <nav class="week-nav">
+            <button id="prev-week" class="btn btn-secondary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              <span>Previous Week</span>
+            </button>
+            <span id="week-display"></span>
+            <button id="next-week" class="btn btn-secondary">
+              <span>Next Week</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </nav>
+
+          <section class="availability-filter-panel hidden" id="availability-filter-panel">
+            <div class="availability-filter-header">
+              <div>
+                <div class="availability-filter-eyebrow">Refine by Day</div>
+                <p class="availability-filter-copy">Jump straight to the day that works best and review only those open
+                  times.</p>
+              </div>
+              <div id="availability-filter-summary" class="availability-filter-summary"></div>
+            </div>
+            <div id="availability-day-filter" class="availability-day-filter" role="toolbar"
+              aria-label="Filter availability by day of week"></div>
+          </section>
+
+          <div id="slots-container" class="slots-container">
+            <!-- Dynamic Slots -->
+          </div>
+        </div>
+      </section>
+
+      <section id="ai-concierge-section" class="hidden">
+        <div class="card assistant-card">
+          <div class="card-header">
+            <h3 class="card-title">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              Chat with the Booking Concierge
+            </h3>
+            <p class="card-subtitle">Describe your ideal timing, priorities, or constraints and the concierge will
+              refine live availability with you.</p>
+          </div>
+
+          <div class="assistant-grid">
+            <div class="assistant-copy">
+              <p class="assistant-prompt">Share timing constraints like “after 3 PM”, “Fridays only”, or “next month
+                works better.”</p>
+              <p class="assistant-caption">This keeps the AI booking experience active even when the visible slots are
+                not ideal.</p>
+            </div>
+            <div class="assistant-chat-shell">
+              <div id="booking-chat-thread" class="assistant-thread" aria-live="polite"></div>
+              <div class="assistant-composer">
+                <textarea id="booking-chat-input" class="form-textarea assistant-input"
+                  placeholder="Example: Tuesdays after 2 PM, or any time the week of April 8."></textarea>
+                <button type="button" id="send-booking-chat" class="btn btn-secondary">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 2L11 13" />
+                    <polyline points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 2: Information Intake -->
+      <form id="booking-form" class="card">
+        <div class="card-header">
+          <h3 class="card-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            Your Details
+          </h3>
+          <p class="card-subtitle">Tell me a little about yourself</p>
+        </div>
+
+        <div class="form-grid"
+          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+          <div class="form-group">
+            <label for="name" class="form-label form-label-required">Full Name</label>
+            <input type="text" id="name" name="name" class="form-input" placeholder="Enter your full name"
+              autocomplete="name" required>
+            <span id="name-error" class="form-error hidden">Valid identification is required</span>
+          </div>
+
+          <div class="form-group">
+            <label for="email" class="form-label form-label-required">Best Email</label>
+            <input type="email" id="email" name="email" class="form-input"
+              placeholder="name@company.com or name@gmail.com" autocomplete="email" required>
+            <span id="email-error" class="form-error hidden">A valid communication channel is required</span>
+          </div>
+
+          <div class="form-group">
+            <label for="company" class="form-label">Company (Optional)</label>
+            <input type="text" id="company" name="company" class="form-input" placeholder="Company Name"
+              autocomplete="organization">
+          </div>
+
+          <div class="form-group">
+            <label for="phone" class="form-label">Phone (Optional)</label>
+            <input type="tel" id="phone" name="phone" class="form-input" placeholder="+1 (555) 123-4567"
+              autocomplete="tel">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="meeting-purpose" class="form-label form-label-required">Meeting Purpose</label>
+          <input type="text" id="meeting-purpose" name="meeting-purpose" class="form-input"
+            placeholder="e.g. Catch up, Project discussion, etc." required>
+        </div>
+
+        <div class="form-group">
+          <label for="message" class="form-label form-label-required">Message</label>
+          <textarea id="message" name="message" class="form-textarea"
+            placeholder="Any additional details or context for our meeting..."
+            maxlength="2000" required></textarea>
+          <div class="character-count">
+            <span id="char-count">0</span> / 2000 Characters
+          </div>
+          <span id="message-error" class="form-error hidden">Please enter a message (min 10 chars)</span>
+        </div>
+
+        <input type="hidden" id="selected-slot" name="selected_slot">
+        <input type="hidden" id="selected-hold-id" name="provisional_hold_id">
+        <input type="hidden" id="booking-session-id" name="booking_session_id">
+
+        <button type="submit" id="submit-btn" class="btn btn-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13" />
+            <polyline points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+          <span>Schedule Meeting</span>
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Footer Section -->
+  <footer id="page-footer" class="footer" style="padding: 4rem 0; border-top: 1px solid rgba(255,255,255,0.05);">
+    <div class="container" style="text-align: center;">
+      <div id="footer-personal-name" style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; opacity: 0.9;"></div>
+    </div>
+  </footer>
+
+  <script src="/booking-form.js"></script>
+</body>
+
+</html>

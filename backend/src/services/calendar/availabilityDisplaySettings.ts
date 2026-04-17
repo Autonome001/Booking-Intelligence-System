@@ -14,6 +14,14 @@ export interface AvailabilityDisplaySettings {
   waitlistCtaTitle?: string;
   waitlistCtaDescription?: string;
   waitlistCtaButtonText?: string;
+  personalViewEnabled?: boolean;
+  personalViewTitle?: string;
+  personalViewDescription?: string;
+  personalViewLogoUrl?: string;
+  personalViewBrandName?: string;
+  personalViewSlug?: string;
+  personalViewCalendarEmail?: string;
+  personalViewTagline?: string;
   createdAt?: string;
   updatedAt: string;
 }
@@ -51,6 +59,14 @@ CREATE TABLE IF NOT EXISTS booking_display_settings (
   waitlist_cta_title TEXT DEFAULT 'High Demand: Alternative Path Available',
   waitlist_cta_description TEXT DEFAULT 'Can\'t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.',
   waitlist_cta_button_text TEXT DEFAULT 'Join Priority Waitlist',
+  personal_view_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  personal_view_title TEXT DEFAULT 'Let''s Connect',
+  personal_view_description TEXT DEFAULT 'Schedule a personal meeting or informal catch-up.',
+  personal_view_logo_url TEXT,
+  personal_view_brand_name TEXT DEFAULT 'Jamelle Eugene',
+  personal_view_slug TEXT DEFAULT 'jamelleeugene',
+  personal_view_calendar_email TEXT,
+  personal_view_tagline TEXT DEFAULT 'Intelligence Reinvented',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -74,6 +90,22 @@ ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS waitlist_cta_description TEXT DEFAULT 'Can\'t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.';
 ALTER TABLE booking_display_settings
   ADD COLUMN IF NOT EXISTS waitlist_cta_button_text TEXT DEFAULT 'Join Priority Waitlist';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_title TEXT DEFAULT 'Let''s Connect';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_description TEXT DEFAULT 'Schedule a personal meeting or informal catch-up.';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_logo_url TEXT;
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_brand_name TEXT DEFAULT 'Jamelle Eugene';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_slug TEXT DEFAULT 'jamelleeugene';
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_calendar_email TEXT;
+ALTER TABLE booking_display_settings
+  ADD COLUMN IF NOT EXISTS personal_view_tagline TEXT DEFAULT 'Intelligence Reinvented';
 NOTIFY pgrst, 'reload schema';
 `;
 
@@ -159,6 +191,14 @@ function getFileBackedSettings(
     waitlistCtaTitle: storedSettings?.waitlistCtaTitle ?? 'High Demand: Alternative Path Available',
     waitlistCtaDescription: storedSettings?.waitlistCtaDescription ?? 'Can\'t find a perfect time? Join our priority waitlist to get notified of cancellations and exclusive early-access windows.',
     waitlistCtaButtonText: storedSettings?.waitlistCtaButtonText ?? 'Join Priority Waitlist',
+    personalViewEnabled: storedSettings?.personalViewEnabled ?? false,
+    personalViewTitle: storedSettings?.personalViewTitle ?? 'Let\'s Connect',
+    personalViewDescription: storedSettings?.personalViewDescription ?? 'Schedule a personal meeting or informal catch-up.',
+    personalViewLogoUrl: storedSettings?.personalViewLogoUrl ?? '',
+    personalViewBrandName: storedSettings?.personalViewBrandName ?? 'Jamelle Eugene',
+    personalViewSlug: storedSettings?.personalViewSlug ?? 'jamelleeugene',
+    personalViewCalendarEmail: storedSettings?.personalViewCalendarEmail ?? '',
+    personalViewTagline: storedSettings?.personalViewTagline ?? 'Intelligence Reinvented',
     createdAt: storedSettings?.createdAt || new Date().toISOString(),
     updatedAt: storedSettings?.updatedAt || new Date().toISOString(),
   };
@@ -203,6 +243,14 @@ function saveFileBackedSettings(
     waitlistCtaTitle: settings.waitlistCtaTitle ?? existing.waitlistCtaTitle,
     waitlistCtaDescription: settings.waitlistCtaDescription ?? existing.waitlistCtaDescription,
     waitlistCtaButtonText: settings.waitlistCtaButtonText ?? existing.waitlistCtaButtonText,
+    personalViewEnabled: settings.personalViewEnabled ?? existing.personalViewEnabled,
+    personalViewTitle: settings.personalViewTitle ?? existing.personalViewTitle,
+    personalViewDescription: settings.personalViewDescription ?? existing.personalViewDescription,
+    personalViewLogoUrl: settings.personalViewLogoUrl ?? existing.personalViewLogoUrl,
+    personalViewBrandName: settings.personalViewBrandName ?? existing.personalViewBrandName,
+    personalViewSlug: settings.personalViewSlug ?? existing.personalViewSlug,
+    personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
+    personalViewTagline: settings.personalViewTagline ?? existing.personalViewTagline,
     createdAt: existing.createdAt, // createdAt is not updated on save
     updatedAt: new Date().toISOString(),
   };
@@ -371,6 +419,14 @@ async function ensureNecessaryColumns(
     .limit(1);
   const ctaButtonTextMissing = isBookingDisplaySettingsColumnMissing(probeCtaButtonText.error, 'waitlist_cta_button_text');
 
+  // Check for personal view columns
+  const probePersonalView = await supabase
+    .from('booking_display_settings')
+    .select('personal_view_enabled')
+    .limit(1);
+  const personalViewMissing = isBookingDisplaySettingsColumnMissing(probePersonalView.error, 'personal_view_enabled');
+
+
   if (
     !noticeMissing
     && !discoveryMissing
@@ -381,6 +437,7 @@ async function ensureNecessaryColumns(
     && !ctaTitleMissing
     && !ctaDescriptionMissing
     && !ctaButtonTextMissing
+    && !personalViewMissing
   ) {
     return { ready: true, repaired: false };
   }
@@ -399,7 +456,7 @@ async function ensureNecessaryColumns(
 
   const verify = await supabase
     .from('booking_display_settings')
-    .select('minimum_notice_minutes, discovery_mode_enabled, waitlist_enabled, waitlist_title, waitlist_description, show_waitlist_copyright, waitlist_cta_title, waitlist_cta_description, waitlist_cta_button_text')
+    .select('minimum_notice_minutes, discovery_mode_enabled, waitlist_enabled, waitlist_title, waitlist_description, show_waitlist_copyright, waitlist_cta_title, waitlist_cta_description, waitlist_cta_button_text, personal_view_enabled, personal_view_title, personal_view_description, personal_view_logo_url, personal_view_brand_name, personal_view_slug, personal_view_calendar_email, personal_view_tagline')
     .limit(1);
 
   if (verify.error) {
@@ -437,6 +494,14 @@ async function persistDatabaseBackedSettings(
     payload['waitlist_cta_title'] = nextSettings.waitlistCtaTitle;
     payload['waitlist_cta_description'] = nextSettings.waitlistCtaDescription;
     payload['waitlist_cta_button_text'] = nextSettings.waitlistCtaButtonText;
+    payload['personal_view_enabled'] = nextSettings.personalViewEnabled;
+    payload['personal_view_title'] = nextSettings.personalViewTitle;
+    payload['personal_view_description'] = nextSettings.personalViewDescription;
+    payload['personal_view_logo_url'] = nextSettings.personalViewLogoUrl;
+    payload['personal_view_brand_name'] = nextSettings.personalViewBrandName;
+    payload['personal_view_slug'] = nextSettings.personalViewSlug;
+    payload['personal_view_calendar_email'] = nextSettings.personalViewCalendarEmail;
+    payload['personal_view_tagline'] = nextSettings.personalViewTagline;
   }
 
   const { data, error } = await supabase
@@ -494,6 +559,38 @@ async function persistDatabaseBackedSettings(
       typeof data['waitlist_cta_button_text'] === 'string'
         ? data['waitlist_cta_button_text']
         : nextSettings.waitlistCtaButtonText,
+    personalViewEnabled:
+      typeof data['personal_view_enabled'] === 'boolean'
+        ? data['personal_view_enabled']
+        : nextSettings.personalViewEnabled,
+    personalViewTitle:
+      typeof data['personal_view_title'] === 'string'
+        ? data['personal_view_title']
+        : nextSettings.personalViewTitle,
+    personalViewDescription:
+      typeof data['personal_view_description'] === 'string'
+        ? data['personal_view_description']
+        : nextSettings.personalViewDescription,
+    personalViewLogoUrl:
+      typeof data['personal_view_logo_url'] === 'string'
+        ? data['personal_view_logo_url']
+        : nextSettings.personalViewLogoUrl,
+    personalViewBrandName:
+      typeof data['personal_view_brand_name'] === 'string'
+        ? data['personal_view_brand_name']
+        : nextSettings.personalViewBrandName,
+    personalViewSlug:
+      typeof data['personal_view_slug'] === 'string'
+        ? data['personal_view_slug']
+        : nextSettings.personalViewSlug,
+    personalViewCalendarEmail:
+      typeof data['personal_view_calendar_email'] === 'string'
+        ? data['personal_view_calendar_email']
+        : nextSettings.personalViewCalendarEmail,
+    personalViewTagline:
+      typeof data['personal_view_tagline'] === 'string'
+        ? data['personal_view_tagline']
+        : nextSettings.personalViewTagline,
     createdAt:
       typeof data['created_at'] === 'string' && data['created_at']
         ? data['created_at']
@@ -610,6 +707,38 @@ export async function getAvailabilityDisplaySettings(
       typeof data['waitlist_cta_button_text'] === 'string'
         ? data['waitlist_cta_button_text']
         : fallbackSettings.waitlistCtaButtonText,
+    personalViewEnabled:
+      typeof data['personal_view_enabled'] === 'boolean'
+        ? data['personal_view_enabled']
+        : fallbackSettings.personalViewEnabled,
+    personalViewTitle:
+      typeof data['personal_view_title'] === 'string'
+        ? data['personal_view_title']
+        : fallbackSettings.personalViewTitle,
+    personalViewDescription:
+      typeof data['personal_view_description'] === 'string'
+        ? data['personal_view_description']
+        : fallbackSettings.personalViewDescription,
+    personalViewLogoUrl:
+      typeof data['personal_view_logo_url'] === 'string'
+        ? data['personal_view_logo_url']
+        : fallbackSettings.personalViewLogoUrl,
+    personalViewBrandName:
+      typeof data['personal_view_brand_name'] === 'string'
+        ? data['personal_view_brand_name']
+        : fallbackSettings.personalViewBrandName,
+    personalViewSlug:
+      typeof data['personal_view_slug'] === 'string'
+        ? data['personal_view_slug']
+        : fallbackSettings.personalViewSlug,
+    personalViewCalendarEmail:
+      typeof data['personal_view_calendar_email'] === 'string'
+        ? data['personal_view_calendar_email']
+        : fallbackSettings.personalViewCalendarEmail,
+    personalViewTagline:
+      typeof data['personal_view_tagline'] === 'string'
+        ? data['personal_view_tagline']
+        : fallbackSettings.personalViewTagline,
     updatedAt:
       typeof data['updated_at'] === 'string' && data['updated_at']
         ? data['updated_at']
@@ -666,7 +795,15 @@ export async function saveAvailabilityDisplaySettings(
     settings.showWaitlistCopyright !== undefined ||
     settings.waitlistCtaTitle !== undefined ||
     settings.waitlistCtaDescription !== undefined ||
-    settings.waitlistCtaButtonText !== undefined
+    settings.waitlistCtaButtonText !== undefined ||
+    settings.personalViewEnabled !== undefined ||
+    settings.personalViewTitle !== undefined ||
+    settings.personalViewDescription !== undefined ||
+    settings.personalViewLogoUrl !== undefined ||
+    settings.personalViewBrandName !== undefined ||
+    settings.personalViewSlug !== undefined ||
+    settings.personalViewCalendarEmail !== undefined ||
+    settings.personalViewTagline !== undefined
   )) {
     if (options.requirePersistentStore) {
       throw createPersistenceError(
@@ -706,6 +843,13 @@ export async function saveAvailabilityDisplaySettings(
     waitlistCtaTitle: settings.waitlistCtaTitle ?? existing.waitlistCtaTitle,
     waitlistCtaDescription: settings.waitlistCtaDescription ?? existing.waitlistCtaDescription,
     waitlistCtaButtonText: settings.waitlistCtaButtonText ?? existing.waitlistCtaButtonText,
+    personalViewEnabled: settings.personalViewEnabled ?? existing.personalViewEnabled,
+    personalViewTitle: settings.personalViewTitle ?? existing.personalViewTitle,
+    personalViewDescription: settings.personalViewDescription ?? existing.personalViewDescription,
+    personalViewLogoUrl: settings.personalViewLogoUrl ?? existing.personalViewLogoUrl,
+    personalViewBrandName: settings.personalViewBrandName ?? existing.personalViewBrandName,
+    personalViewSlug: settings.personalViewSlug ?? existing.personalViewSlug,
+    personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
     updatedAt: new Date().toISOString(),
   };
 

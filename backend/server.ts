@@ -313,6 +313,22 @@ app.get('/admin', (_req: Request, res: Response): void => {
   res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
+// Dynamic Vanity URL (Personal View) Fallback
+app.get(['/:slug', '/Schedule/:slug'], (req: Request, res: Response, next: NextFunction): void => {
+  const slug = req.params.slug;
+  
+  // Avoid intercepting known static assets if they somehow got past static middleware
+  const ext = path.extname(slug || '').toLowerCase();
+  const staticAssetExts = ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.json', '.map'];
+  
+  if (ext && staticAssetExts.includes(ext)) {
+    return next();
+  }
+  
+  // Serve the personal view. The frontend JS will validate if the slug actually matches the config
+  res.sendFile(path.join(publicDir, 'personal.html'));
+});
+
 // Debug: Log all requests to help identify Slack webhook URL
 app.use('*', (req: Request, _res: Response, next: NextFunction): void => {
   if (req.originalUrl.includes('slack') || req.originalUrl.includes('interaction')) {

@@ -46,6 +46,7 @@ export interface GetAvailableSlotsOptions {
   };
   bufferMinutes?: number;
   slotIntervalMinutes?: number;
+  calendarEmailOverride?: string;
 }
 
 export interface ProvisionalHoldRequest {
@@ -249,7 +250,8 @@ export class CalendarService {
     }
 
     // Check cache first
-    const cacheKey = this.generateCacheKey(options);
+    const baseCacheKey = this.generateCacheKey(options);
+    const cacheKey = options.calendarEmailOverride ? `${baseCacheKey}_${options.calendarEmailOverride}` : baseCacheKey;
     const cached = this.availabilityCache.get(cacheKey);
 
     if (cached && cached.expiresAt > new Date()) {
@@ -261,8 +263,18 @@ export class CalendarService {
       return [...cached.slots];
     }
 
-    const bookingProvider =
+    let bookingProvider =
       this.bookingProviderId ? this.providers.get(this.bookingProviderId) : undefined;
+      
+    if (options.calendarEmailOverride) {
+      const overrideProvider = Array.from(this.providers.values()).find(
+        (p) => p.calendarEmail === options.calendarEmailOverride
+      );
+      if (overrideProvider) {
+        bookingProvider = overrideProvider;
+      }
+    }
+    
     const userEmail = this.availabilityUserEmail || 'dev@autonome.us';
     const configuredWorkingHours = await this.getActiveWorkingHours(userEmail);
     const shouldGenerateFullDaySlots =
@@ -604,9 +616,20 @@ export class CalendarService {
   async createSelectionHold(
     sessionId: string,
     slot: { start: Date; end: Date },
-    expirationMinutes = 15
+    expirationMinutes = 15,
+    calendarEmailOverride?: string
   ): Promise<{ holdId: string; calendarEmail: string; expiresAt: Date }> {
-    const provider = this.getBookingProviderOrThrow();
+    let provider = this.getBookingProviderOrThrow();
+    
+    if (calendarEmailOverride) {
+      const overrideProvider = Array.from(this.providers.values()).find(
+        (p) => p.calendarEmail === calendarEmailOverride
+      );
+      if (overrideProvider) {
+        provider = overrideProvider;
+      }
+    }
+    
     const existingHoldId = this.selectionHoldBySession.get(sessionId);
 
     if (existingHoldId) {
