@@ -277,6 +277,23 @@ app.use('/api/calendar', calendarAvailabilityRouter);
 // Waitlist API
 app.use('/api/waitlist', waitlistRouter);
 
+// Host-based routing for Personal View domains
+app.get(['/', '/Schedule'], (req: Request, res: Response, next: NextFunction): void => {
+  const personalDomain = process.env['PERSONAL_BOOKING_DOMAIN'];
+  
+  if (personalDomain && req.hostname === personalDomain) {
+    logger.info(`Serving personal view for host: ${req.hostname}`);
+    return res.sendFile(path.join(publicDir, 'personal.html'));
+  }
+  
+  // For the root path, if not a personal domain, continue to default index.html
+  if (req.path === '/') {
+    return res.sendFile(path.join(publicDir, 'index.html'));
+  }
+  
+  next();
+});
+
 // Serve static files from public directory
 app.use(
   express.static(publicDir, {
@@ -293,7 +310,7 @@ app.use(
   })
 );
 
-// Default route serves booking form
+// Fallback for root path (unlikely to be hit due to middleware above but kept for safety)
 app.get('/', (_req: Request, res: Response): void => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });

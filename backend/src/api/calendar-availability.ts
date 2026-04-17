@@ -66,7 +66,8 @@ function buildWaitlistUrl(userEmail: string): string {
 function buildPublicDisplaySettingsPayload(
   userEmail: string,
   enabled: boolean,
-  displaySettings: Awaited<ReturnType<typeof getAvailabilityDisplaySettings>>
+  displaySettings: Awaited<ReturnType<typeof getAvailabilityDisplaySettings>>,
+  isPersonalDomainMatch: boolean = false
 ): Record<string, unknown> {
   return {
     enabled,
@@ -75,6 +76,7 @@ function buildPublicDisplaySettingsPayload(
       ? 'Real-time availability display enabled'
       : 'Availability sent via email after booking submission',
     user_email: userEmail,
+    isPersonalDomainMatch,
     displayWindowDays: displaySettings.displayWindowDays,
     aiConciergeEnabled: displaySettings.aiConciergeEnabled,
     minimumNoticeMinutes: displaySettings.minimumNoticeMinutes,
@@ -85,12 +87,12 @@ function buildPublicDisplaySettingsPayload(
     waitlistCtaTitle: displaySettings.waitlistCtaTitle,
     waitlistCtaDescription: displaySettings.waitlistCtaDescription,
     waitlistCtaButtonText: displaySettings.waitlistCtaButtonText,
-    personalViewEnabled: displaySettings.personalViewEnabled,
+    personalViewEnabled: isPersonalDomainMatch ? true : displaySettings.personalViewEnabled,
     personalViewTitle: displaySettings.personalViewTitle,
     personalViewDescription: displaySettings.personalViewDescription,
     personalViewLogoUrl: displaySettings.personalViewLogoUrl,
     personalViewBrandName: displaySettings.personalViewBrandName,
-    personalViewSlug: displaySettings.personalViewSlug,
+    personalViewSlug: isPersonalDomainMatch ? (process.env['PERSONAL_BOOKING_SLUG'] || displaySettings.personalViewSlug) : displaySettings.personalViewSlug,
     personalViewCalendarEmail: displaySettings.personalViewCalendarEmail,
     personalViewTagline: displaySettings.personalViewTagline,
     waitlistUrl: buildWaitlistUrl(userEmail),
@@ -902,16 +904,22 @@ router.get('/config/show-slots', async (req: Request, res: Response): Promise<vo
   const enabled = process.env['SHOW_CALENDAR_SLOTS'] === 'true';
   const config = getSchedulingConfig();
   const calendarService = await serviceManager.getService<CalendarService>('calendar');
+  
+  // Host-based resolution
+  const personalDomain = process.env['PERSONAL_BOOKING_DOMAIN'];
+  const isPersonalDomainMatch = !!personalDomain && req.hostname === personalDomain;
+  
   const userEmail = resolveUserEmail(
     req.query['user_email'],
     calendarService?.getAvailabilityUserEmail() || DEFAULT_USER_EMAIL
   );
+  
   const { settings: displaySettings } = await getDisplaySettingsForUser(
     userEmail,
     config.defaultBookingWindowDays
   );
 
-  res.json(buildPublicDisplaySettingsPayload(userEmail, enabled, displaySettings));
+  res.json(buildPublicDisplaySettingsPayload(userEmail, enabled, displaySettings, isPersonalDomainMatch));
 });
 
 /**

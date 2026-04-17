@@ -82,29 +82,40 @@ async function checkAvailabilityFeatureFlag() {
     });
     const data = await response.json();
     
-    // Check if this is a vanity URL view
+    // Check if this is a vanity URL view or a personal domain match
     const pathSegments = window.location.pathname.split('/').filter(s => s);
     const normalizeSlug = (s) => (s || '').replace(/^\/+|\/+$/g, '').toLowerCase().trim();
+    
+    const isPersonalDomain = data.isPersonalDomainMatch === true;
+    const isPathSlugRequest = pathSegments.length > 0 && !['embed', 'waitlist', 'admin', 'personal.html'].includes(pathSegments[0].toLowerCase());
 
-    if (pathSegments.length > 0 && !['embed', 'waitlist', 'admin'].includes(pathSegments[0].toLowerCase())) {
-      const pathSlug = pathSegments[0].toLowerCase() === 'schedule' && pathSegments.length > 1 
-        ? pathSegments[1] 
-        : pathSegments[0];
-
-      const normalizedPathSlug = normalizeSlug(decodeURIComponent(pathSlug));
-      const normalizedConfigSlug = normalizeSlug(data.personalViewSlug);
+    if (isPersonalDomain || isPathSlugRequest) {
+      let isMatch = false;
       
-      console.log('[PersonalView] Checking slug match:', { 
-        pathSlug: normalizedPathSlug, 
-        configSlug: normalizedConfigSlug,
-        enabled: data.personalViewEnabled,
-        fullPath: window.location.pathname
-      });
+      if (isPersonalDomain) {
+        console.log('[PersonalView] Hostname match detected. Applying identity...');
+        isMatch = true;
+      } else {
+        const pathSlug = pathSegments[0].toLowerCase() === 'schedule' && pathSegments.length > 1 
+          ? pathSegments[1] 
+          : pathSegments[0];
 
-      if (data.personalViewEnabled && normalizedConfigSlug === normalizedPathSlug) {
-         console.log('[PersonalView] Match found. Applying tailored branding...');
+        const normalizedPathSlug = normalizeSlug(decodeURIComponent(pathSlug));
+        const normalizedConfigSlug = normalizeSlug(data.personalViewSlug);
+        
+        console.log('[PersonalView] Checking path slug match:', { 
+          pathSlug: normalizedPathSlug, 
+          configSlug: normalizedConfigSlug,
+          enabled: data.personalViewEnabled,
+          fullPath: window.location.pathname
+        });
+
+        isMatch = data.personalViewEnabled && normalizedConfigSlug === normalizedPathSlug;
+      }
+
+      if (isMatch) {
+         console.log('[PersonalView] Identity verified. Applying tailored branding...');
          
-         const isPersonalView = true;
          window.isPersonalViewActive = true;
 
          // 1. Page Title
