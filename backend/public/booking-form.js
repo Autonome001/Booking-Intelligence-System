@@ -15,7 +15,7 @@ let currentAvailabilitySlots = [];
 let activeDayFilter = 'all';
 const ADMIN_USER_EMAIL_STORAGE_KEY = 'autonome_admin_user_email';
 const AVAILABILITY_REFRESH_STORAGE_KEY = 'autonome_availability_refresh';
-const BOOKING_USER_EMAIL = resolveBookingUserEmail();
+let bookingUserEmail = resolveBookingUserEmail();
 
 // ============================================
 // INITIALIZATION
@@ -45,12 +45,12 @@ function resolveBookingUserEmail() {
 }
 
 function appendBookingUserEmail(path) {
-  if (!BOOKING_USER_EMAIL) {
+  if (!bookingUserEmail) {
     return path;
   }
 
   const separator = path.includes('?') ? '&' : '?';
-  return `${path}${separator}user_email=${encodeURIComponent(BOOKING_USER_EMAIL)}`;
+  return `${path}${separator}user_email=${encodeURIComponent(bookingUserEmail)}`;
 }
 
 function applyDisplayMode() {
@@ -81,6 +81,9 @@ async function checkAvailabilityFeatureFlag() {
       cache: 'no-store',
     });
     const data = await response.json();
+    if (typeof data.user_email === 'string' && data.user_email.trim()) {
+      bookingUserEmail = data.user_email.trim();
+    }
     
     // Check if this is a vanity URL view or a personal domain match
     const pathSegments = window.location.pathname.split('/').filter(s => s);
@@ -507,7 +510,7 @@ async function reserveSelectedSlot(slot) {
       slot_start: slot.start,
       slot_end: slot.end,
       expiration_minutes: 15,
-      ...(BOOKING_USER_EMAIL ? { user_email: BOOKING_USER_EMAIL } : {}),
+      ...(bookingUserEmail ? { user_email: bookingUserEmail } : {}),
       ...(window.activeCalendarEmailOverride ? { calendar_email_override: window.activeCalendarEmailOverride } : {}),
     }),
   });
@@ -801,7 +804,8 @@ async function sendBookingChatMessage() {
       body: JSON.stringify({
         message,
         history: bookingChatHistory,
-        ...(BOOKING_USER_EMAIL ? { user_email: BOOKING_USER_EMAIL } : {}),
+        ...(bookingUserEmail ? { user_email: bookingUserEmail } : {}),
+        personal_view_active: window.isPersonalViewActive === true,
         duration_minutes: 30,
       }),
     });

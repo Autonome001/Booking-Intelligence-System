@@ -13,6 +13,7 @@ import slackRouter from './src/api/slack-router.js';
 import calendarOAuthRouter from './src/api/calendar-oauth.js';
 import calendarWebhookRouter from './src/api/calendar-webhook.js';
 import calendarAvailabilityRouter from './src/api/calendar-availability.js';
+import calendarAvailabilityControlsRouter from './src/api/calendar-availability-controls.js';
 import tavusWebhookRouter from './src/api/tavus-webhook.js';
 import waitlistRouter from './src/api/waitlist-router.js';
 
@@ -273,6 +274,7 @@ app.use('/api/tavus/webhook', tavusWebhookRouter);
 
 // Calendar availability API
 app.use('/api/calendar', calendarAvailabilityRouter);
+app.use('/api/calendar', calendarAvailabilityControlsRouter);
 
 // Waitlist API
 app.use('/api/waitlist', waitlistRouter);

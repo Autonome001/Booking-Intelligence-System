@@ -626,7 +626,7 @@ router.get('/availability', async (req: Request, res: Response): Promise<void> =
  */
 router.post('/chat', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { message, history, user_email, duration_minutes } = req.body ?? {};
+    const { message, history, user_email, duration_minutes, personal_view_active } = req.body ?? {};
     const userMessage = typeof message === 'string' ? message.trim() : '';
 
     if (!userMessage) {
@@ -649,7 +649,11 @@ router.post('/chat', async (req: Request, res: Response): Promise<void> => {
     );
 
 
-    if (!displaySettings.aiConciergeEnabled) {
+    const conciergeEnabled = personal_view_active === true
+      ? displaySettings.personalViewAiConciergeEnabled !== false
+      : displaySettings.aiConciergeEnabled !== false;
+
+    if (!conciergeEnabled) {
       res.status(403).json({
         success: false,
         error: 'AI booking concierge is disabled',

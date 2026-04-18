@@ -181,6 +181,44 @@ function createReadableDisplaySupabase(row: {
   };
 }
 
+function createWriteFailingDisplaySupabase(
+  row: {
+    display_window_days: number;
+    ai_concierge_enabled: boolean;
+    minimum_notice_minutes: number;
+    updated_at: string;
+    personal_view_ai_concierge_enabled?: boolean;
+  },
+  errorMessage = 'database write failed'
+): any {
+  return {
+    from: () => ({
+      select: () => ({
+        limit: async () => ({
+          data: [],
+          error: null,
+        }),
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: row,
+            error: null,
+          }),
+        }),
+      }),
+      upsert: () => ({
+        select: () => ({
+          single: async () => ({
+            data: null,
+            error: {
+              message: errorMessage,
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+}
+
 function createReadableNotificationSupabase(row: {
   timezone: string;
   pre_meeting: unknown[];
@@ -287,6 +325,34 @@ describe('settings persistence fallbacks', () => {
     });
   });
 
+  it('retains personal-view concierge settings through the file-backed fallback', async () => {
+    const userEmail = 'display-settings-fallback-test@autonome.test';
+
+    const saved = await saveAvailabilityDisplaySettings(
+      null,
+      userEmail,
+      {
+        personalViewEnabled: true,
+        personalViewAiConciergeEnabled: false,
+        personalViewSlug: 'jamelleeugene',
+      },
+      20
+    );
+
+    const loaded = await getAvailabilityDisplaySettings(null, userEmail, 20);
+
+    expect(saved).toMatchObject({
+      personalViewEnabled: true,
+      personalViewAiConciergeEnabled: false,
+      personalViewSlug: 'jamelleeugene',
+    });
+    expect(loaded).toMatchObject({
+      personalViewEnabled: true,
+      personalViewAiConciergeEnabled: false,
+      personalViewSlug: 'jamelleeugene',
+    });
+  });
+
   it('falls back to file-backed availability settings when database bootstrapping fails', async () => {
     const userEmail = 'display-settings-db-failure@autonome.test';
 
@@ -310,6 +376,40 @@ describe('settings persistence fallbacks', () => {
       displayWindowDays: 28,
       aiConciergeEnabled: true,
       minimumNoticeMinutes: 45,
+    });
+  });
+
+  it('falls back to file-backed availability settings when database writes fail', async () => {
+    const userEmail = 'display-settings-db-failure@autonome.test';
+
+    const saved = await saveAvailabilityDisplaySettings(
+      createWriteFailingDisplaySupabase({
+        display_window_days: 20,
+        ai_concierge_enabled: true,
+        minimum_notice_minutes: 30,
+        personal_view_ai_concierge_enabled: true,
+        updated_at: '2030-01-01T00:00:00.000Z',
+      }),
+      userEmail,
+      {
+        displayWindowDays: 28,
+        personalViewAiConciergeEnabled: false,
+      },
+      20,
+      {
+        requirePersistentStore: true,
+      }
+    );
+
+    const loaded = await getAvailabilityDisplaySettings(null, userEmail, 20);
+
+    expect(saved).toMatchObject({
+      displayWindowDays: 28,
+      personalViewAiConciergeEnabled: false,
+    });
+    expect(loaded).toMatchObject({
+      displayWindowDays: 28,
+      personalViewAiConciergeEnabled: false,
     });
   });
 

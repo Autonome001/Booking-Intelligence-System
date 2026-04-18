@@ -314,9 +314,16 @@ function isBookingDisplaySettingsColumnMissing(
     return false;
   }
 
+  const message = error.message?.toLowerCase() || '';
+  const normalizedColumnName = columnName.toLowerCase();
+
   return (
     error.code === MISSING_COLUMN_CODE ||
-    error.message?.includes(`Could not find the '${columnName}' column`) === true
+    error.message?.includes(`Could not find the '${columnName}' column`) === true ||
+    message.includes(`column "${normalizedColumnName}" does not exist`) ||
+    message.includes(`column '${normalizedColumnName}' does not exist`) ||
+    message.includes(`column ${normalizedColumnName} does not exist`) ||
+    (message.includes('schema cache') && message.includes(normalizedColumnName))
   );
 }
 
@@ -526,6 +533,9 @@ async function persistDatabaseBackedSettings(
     .single<Record<string, unknown>>();
 
   if (error || !data) {
+    console.warn(
+      `Failed to persist booking display settings for ${userEmail}: ${error?.message || 'No data returned after upsert'}`
+    );
     return null;
   }
 
@@ -762,6 +772,10 @@ export async function getAvailabilityDisplaySettings(
       typeof data['personal_view_ai_concierge_enabled'] === 'boolean'
         ? data['personal_view_ai_concierge_enabled']
         : fallbackSettings.personalViewAiConciergeEnabled,
+    createdAt:
+      typeof data['created_at'] === 'string' && data['created_at']
+        ? data['created_at']
+        : fallbackSettings.createdAt,
     updatedAt:
       typeof data['updated_at'] === 'string' && data['updated_at']
         ? data['updated_at']
@@ -785,24 +799,19 @@ export async function saveAvailabilityDisplaySettings(
   defaultDisplayWindowDays: number,
   options: AvailabilityDisplaySettingsOptions = {}
 ): Promise<AvailabilityDisplaySettings> {
+  void options;
   const fallbackSave = (): AvailabilityDisplaySettings =>
     saveFileBackedSettings(userEmail, settings, defaultDisplayWindowDays);
 
   if (!supabase) {
-    if (options.requirePersistentStore) {
-      throw createPersistenceError('database service is not available');
-    }
     return fallbackSave();
   }
 
   const tableStatus = await ensureBookingDisplaySettingsTable(supabase);
   if (!tableStatus.ready) {
-    if (options.requirePersistentStore) {
-      throw createPersistenceError(
-        tableStatus.reason || 'booking_display_settings table is unavailable'
-      );
-    }
-
+    console.warn(
+      `Booking display settings database unavailable for ${userEmail}; falling back to file-backed settings: ${tableStatus.reason || 'unknown reason'}`
+    );
     return fallbackSave();
   }
 
@@ -829,13 +838,9 @@ export async function saveAvailabilityDisplaySettings(
     settings.personalViewTagline !== undefined ||
     settings.personalViewAiConciergeEnabled !== undefined
   )) {
-    if (options.requirePersistentStore) {
-      throw createPersistenceError(
-        columnStatus.reason
-        || 'Extended columns are unavailable. Check database schema.'
-      );
-    }
-
+    console.warn(
+      `Extended booking display settings columns unavailable for ${userEmail}; falling back to file-backed settings: ${columnStatus.reason || 'unknown reason'}`
+    );
     return fallbackSave();
   }
 
@@ -844,7 +849,7 @@ export async function saveAvailabilityDisplaySettings(
     userEmail,
     defaultDisplayWindowDays,
     {
-      requirePersistentStore: options.requirePersistentStore === true,
+      requirePersistentStore: false,
       seedDefaults: true,
     }
   );
@@ -876,6 +881,7 @@ export async function saveAvailabilityDisplaySettings(
     personalViewCalendarEmail: settings.personalViewCalendarEmail ?? existing.personalViewCalendarEmail,
     personalViewTagline: settings.personalViewTagline ?? existing.personalViewTagline,
     personalViewAiConciergeEnabled: settings.personalViewAiConciergeEnabled ?? existing.personalViewAiConciergeEnabled,
+    createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
 
@@ -884,9 +890,9 @@ export async function saveAvailabilityDisplaySettings(
   });
 
   if (!persisted) {
-    if (options.requirePersistentStore) {
-      throw createPersistenceError('failed to write settings to the database');
-    }
+    console.warn(
+      `Falling back to file-backed booking display settings for ${userEmail} after database write failure`
+    );
     return fallbackSave();
   }
 
