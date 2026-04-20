@@ -285,16 +285,27 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
   const hostHeader = req.headers.host || '';
   
   if (personalDomain && hostHeader.includes(personalDomain)) {
-    // skip for API calls and static assets
+    // 1. skip for API calls
     const isApiRequest = req.path.startsWith('/api/');
-    const isStaticAsset = /\.(js|css|png|jpg|jpeg|gif|ico|svg|json|html)$/.test(req.path);
+    if (isApiRequest) return next();
+
+    // 2. skip for static assets with extensions
+    const isStaticAsset = /\.(js|css|png|jpg|jpeg|gif|ico|svg|json|html|map|txt|xml|webmanifest)$/i.test(req.path);
+    if (isStaticAsset) return next();
+
+    // 3. SECURE: skip for hidden files (.env, .git, etc) and common dangerous paths
+    const isHiddenFile = req.path.split('/').some(part => part.startsWith('.'));
+    const isSensitivePath = /\/(wp-admin|wp-content|wp-includes|phpmyadmin|config|backup|setup|install|cgi-bin)/i.test(req.path);
+    const isPhpFile = /\.php$/i.test(req.path);
+
+    if (isHiddenFile || isSensitivePath || isPhpFile) {
+        // Let these fall through to standard 404 or static handler
+        return next();
+    }
     
     // We only want to intercept the "entry points" for the personal domain
-    // If it's the root path or the specific slug path on the personal domain
-    if (!isApiRequest && !isStaticAsset) {
-      logger.info(`Serving personal view for host: ${req.hostname} on path ${req.path}`);
-      return res.sendFile(path.join(publicDir, 'personal.html'));
-    }
+    logger.info(`Serving personal view for host: ${req.hostname} on path ${req.path}`);
+    return res.sendFile(path.join(publicDir, 'personal.html'));
   }
   next();
 });
