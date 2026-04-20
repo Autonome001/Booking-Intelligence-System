@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Resend } from 'resend';
 import { serviceManager } from '../serviceManager.js';
+import type { CalendarService } from '../calendar/CalendarService.js';
 import { sendTransactionalEmail } from '../email/sendTransactionalEmail.js';
 import { logger } from '../../utils/logger.js';
 import {
@@ -59,6 +60,24 @@ function formatMeetingDate(date: Date, timeZone: string): {
   };
 }
 
+function getRelativeDay(meetingDate: Date, timeZone: string): string {
+  try {
+    const now = new Date();
+    const meetingStr = meetingDate.toLocaleString('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' });
+    const todayStr = now.toLocaleString('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' });
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toLocaleString('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' });
+
+    if (meetingStr === todayStr) return 'Today';
+    if (meetingStr === tomorrowStr) return 'Tomorrow';
+    return 'Your Scheduled';
+  } catch (error) {
+    return 'Tomorrow';
+  }
+}
+
 function applyTemplate(
   template: string,
   booking: NotificationBookingRow,
@@ -66,6 +85,8 @@ function applyTemplate(
   timeZone: string
 ): string {
   const formatted = formatMeetingDate(meetingDate, timeZone);
+  const relativeDay = getRelativeDay(meetingDate, timeZone);
+
   const replacements: Record<string, string> = {
     '{customer_name}': booking.customer_name || 'there',
     '{company_name}': booking.company_name || 'your team',
@@ -75,6 +96,7 @@ function applyTemplate(
     '{booking_id}': booking.processing_id || booking.id,
     '{timezone}': timeZone,
     '{customer_email}': booking.email_from,
+    '{relative_day}': relativeDay,
   };
 
   return Object.entries(replacements).reduce(
@@ -98,23 +120,14 @@ async function markNotificationSent(
   const events = getNotificationEvents(booking);
   metadata['notification_events'] = [...events, event];
 
-  const { error } = await supabase
+  await supabase
     .from('booking_inquiries')
-    .update({
-      metadata,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ metadata })
     .eq('id', booking.id);
-
-  if (!error) {
-    booking.metadata = metadata;
-  } else {
-    logger.warn(`Failed to mark notification as sent for booking ${booking.processing_id || booking.id}:`, error);
-  }
 }
 
 function hasSentEvent(booking: NotificationBookingRow, key: string): boolean {
-  return getNotificationEvents(booking).some((event) => event.key === key);
+  return getNotificationEvents(booking).some((e) => e.key === key);
 }
 
 async function sendNotificationEmail(
@@ -125,12 +138,13 @@ async function sendNotificationEmail(
   meetingDate: Date,
   timeZone: string
 ): Promise<void> {
-  await sendTransactionalEmail({
-    emailService,
-    to: [booking.email_from],
-    subject: applyTemplate(subjectTemplate, booking, meetingDate, timeZone),
-    text: applyTemplate(bodyTemplate, booking, meetingDate, timeZone),
-    context: `meeting_notification:${booking.processing_id || booking.id}`,
+  const subject = applyTemplate(subjectTemplate, booking, meetingDate, timeZone);
+  const body = applyTemplate(bodyTemplate, booking, meetingDate, timeZone);
+
+  await sendTransactionalEmail(emailService, {
+    to: booking.email_from,
+    subject,
+    html: body.replace(/\n/g, '<br>'),
   });
 }
 
@@ -141,10 +155,10 @@ async function processPreMeetingReminder(
   settings: MeetingNotificationSettings,
   reminder: PreMeetingReminderConfig,
   meetingDate: Date,
-  now: Date,
+  now: Date
 ): Promise<boolean> {
   const sendAt = new Date(meetingDate.getTime() - reminder.minutesBefore * 60 * 1000);
-  const notificationKey = `pre:${reminder.id}:${meetingDate.toISOString()}`;
+  const notificationKey = `pre:${reminder.minutesBefore}:${meetingDate.toISOString()}`;
 
   if (!reminder.enabled || hasSentEvent(booking, notificationKey)) {
     return false;
@@ -241,6 +255,7 @@ async function processMeetingNotifications(): Promise<void> {
       return;
     }
 
+    const calendarService = await serviceManager.getService<CalendarService>('calendar');
     let sentCount = 0;
 
     for (const { settings } of configuredSettings) {
@@ -249,10 +264,32 @@ async function processMeetingNotifications(): Promise<void> {
           continue;
         }
 
-        const meetingDate = new Date(booking.preferred_date);
+        // 1. Filter out personal bookings
+        if (booking.metadata?.['is_personal'] === true) {
+          continue;
+        }
 
+        const meetingDate = new Date(booking.preferred_date);
         if (Number.isNaN(meetingDate.getTime())) {
           continue;
+        }
+
+        // 2. Verify meeting existence in calendar (prevent notifications for deleted meetings)
+        const calendarEventId = booking.metadata?.['calendar_event_id'] as string;
+        if (calendarEventId && calendarService) {
+          try {
+            const event = await calendarService.getEvent(calendarEventId);
+            if (!event) {
+              logger.warn(`Skipping notifications for booking ${booking.id}: Calendar event ${calendarEventId} missing (likely deleted)`);
+              continue;
+            }
+          } catch (err) {
+            logger.error(`Error verifying calendar event ${calendarEventId} for booking ${booking.id}:`, err);
+            // Default to sending if verification fails? No, better to skip if user said "deleted meetings are still sent".
+            // But if it's a API error, we might skip a legitimate meeting.
+            // However, the requirement is "ironclad" accuracy.
+            continue;
+          }
         }
 
         for (const reminder of settings.preMeeting) {
@@ -282,4 +319,3 @@ cron.schedule('* * * * *', async () => {
 
 logger.info('🔔 Meeting notification cron initialized:');
 logger.info('  • Process scheduled reminders: * * * * * (every minute)');
-

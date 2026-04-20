@@ -41,6 +41,7 @@ interface BookingData {
   user_agent?: string;
   ai_concierge_engaged?: boolean;
   calendar_email_override?: string;
+  is_personal?: boolean;
 }
 
 /**
@@ -579,6 +580,7 @@ async function processEmergencyMode(
       user_agent: bookingData.user_agent,
       source: 'emergency_fallback',
       processing_mode: 'emergency',
+      is_personal: bookingData.is_personal === true,
     };
 
     const bookingRecordVariants: Array<Record<string, unknown>> = [
@@ -731,6 +733,9 @@ router.post('/booking-form', async (req: Request, res: Response): Promise<void> 
     const bookingData = req.body as BookingData;
     const bypassInteractiveAIFlow = shouldBypassInteractiveAIBookingFlow(bookingData);
     const calendarBookingRequired = await requiresConfirmedCalendarBooking();
+    
+    // Enrich bookingData with is_personal flag for metadata storage
+    bookingData.is_personal = (req.body as any).is_personal === true;
 
     if (calendarBookingRequired && !provisionalHoldId) {
       res.status(400).json({

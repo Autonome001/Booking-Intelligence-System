@@ -239,6 +239,33 @@ export class CalendarService {
   }
 
   /**
+   * Get all initialized provider instances
+   */
+  public getProviders(): ICalendarProvider[] {
+    return Array.from(this.providers.values());
+  }
+
+  /**
+   * Get a specific calendar event by ID, optionally filtered by calendar email
+   */
+  async getEvent(eventId: string, calendarEmail?: string): Promise<CalendarEvent | null> {
+    const providers = calendarEmail
+      ? Array.from(this.providers.values()).filter((p) => p.calendarEmail === calendarEmail)
+      : Array.from(this.providers.values());
+
+    for (const provider of providers) {
+      try {
+        const event = await provider.getEvent(eventId);
+        if (event) return event;
+      } catch (error) {
+        // Skip errors (event not found in this provider)
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get available time slots for customer-facing booking.
    * Uses the designated booking calendar as the source of truth.
    * Falls back to intersecting all calendars only if no booking calendar is configured.

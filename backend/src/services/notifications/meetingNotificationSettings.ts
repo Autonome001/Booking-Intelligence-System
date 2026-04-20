@@ -105,7 +105,7 @@ function defaultPreMeetingReminders(): PreMeetingReminderConfig[] {
       id: 'reminder_1',
       enabled: true,
       minutesBefore: 24 * 60,
-      subjectTemplate: 'Reminder: Your Autonome consultation is tomorrow, {customer_name}',
+      subjectTemplate: 'Reminder: Your Autonome consultation is {relative_day}, {customer_name}',
       bodyTemplate:
         'Hi {customer_name},\n\nThis is a reminder that your Autonome consultation is scheduled for {meeting_datetime} ({timezone}).\n\nWe look forward to speaking with you.\n\nBest,\nThe Autonome Team',
     },

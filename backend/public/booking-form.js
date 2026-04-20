@@ -983,6 +983,7 @@ function setupFormSubmission() {
       message: document.getElementById('message').value.trim(),
       ai_concierge_engaged: hasUserChatContext(),
       calendar_email_override: window.activeCalendarEmailOverride || undefined,
+      is_personal: window.isPersonalViewActive === true,
     };
 
     if (!formData.message && hasUserChatContext()) {
