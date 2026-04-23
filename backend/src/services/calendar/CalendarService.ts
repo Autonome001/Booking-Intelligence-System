@@ -619,13 +619,6 @@ export class CalendarService {
     this.clearAvailabilityCache();
   }
 
-  /**
-   * Get all active calendar providers
-   */
-  getProviders(): ICalendarProvider[] {
-    return Array.from(this.providers.values());
-  }
-
   getAvailabilityUserEmail(): string | null {
     return this.availabilityUserEmail;
   }

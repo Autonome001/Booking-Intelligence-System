@@ -95,6 +95,11 @@ app.get('/health', (_req: Request, res: Response): void => {
   });
 });
 
+app.get('/favicon.ico', (_req: Request, res: Response): void => {
+  res.type('image/png');
+  res.sendFile(path.join(publicDir, 'favicon.png'));
+});
+
 /**
  * Detailed diagnostics endpoint
  */

@@ -141,10 +141,12 @@ async function sendNotificationEmail(
   const subject = applyTemplate(subjectTemplate, booking, meetingDate, timeZone);
   const body = applyTemplate(bodyTemplate, booking, meetingDate, timeZone);
 
-  await sendTransactionalEmail(emailService, {
-    to: booking.email_from,
+  await sendTransactionalEmail({
+    emailService,
+    to: [booking.email_from],
     subject,
-    html: body.replace(/\n/g, '<br>'),
+    text: body,
+    context: `meeting notification for ${booking.processing_id || booking.id}`,
   });
 }
 
