@@ -35,7 +35,7 @@ EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3001/health || exit 1
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3001) + '/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 # Start command
 CMD ["npm", "start"]
