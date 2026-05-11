@@ -1,0 +1,49 @@
+{
+  "dev@autonome.us": {
+    "timezone": "America/New_York",
+    "preMeeting": [
+      {
+        "id": "reminder_1",
+        "enabled": true,
+        "minutesBefore": 90,
+        "subjectTemplate": "Reminder: Your Autonome consultation is tomorrow, {customer_name}",
+        "bodyTemplate": "Hi {customer_name},\n\nThis is a reminder that your Autonome consultation is scheduled for {meeting_datetime} ({timezone}).\n\nWe look forward to speaking with you.\n\nBest,\nThe Autonome Team"
+      },
+      {
+        "id": "reminder_2",
+        "enabled": true,
+        "minutesBefore": 15,
+        "subjectTemplate": "Reminder: Your Autonome consultation starts in 1 hour",
+        "bodyTemplate": "Hi {customer_name},\n\nYour Autonome consultation is coming up at {meeting_datetime} ({timezone}).\n\nReply to this email if anything changes.\n\nBest,\nThe Autonome Team"
+      },
+      {
+        "id": "reminder_3",
+        "enabled": false,
+        "minutesBefore": 15,
+        "subjectTemplate": "Reminder: Your Autonome consultation starts soon",
+        "bodyTemplate": "Hi {customer_name},\n\nThis is a quick reminder that your Autonome consultation begins at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team"
+      },
+      {
+        "id": "reminder_4",
+        "enabled": false,
+        "minutesBefore": 5,
+        "subjectTemplate": "Reminder: Your Autonome consultation begins in 5 minutes",
+        "bodyTemplate": "Hi {customer_name},\n\nYour Autonome consultation begins in about 5 minutes at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team"
+      },
+      {
+        "id": "reminder_5",
+        "enabled": false,
+        "minutesBefore": 2,
+        "subjectTemplate": "Reminder: Your Autonome consultation is about to begin",
+        "bodyTemplate": "Hi {customer_name},\n\nYour Autonome consultation is about to begin at {meeting_datetime} ({timezone}).\n\nBest,\nThe Autonome Team"
+      }
+    ],
+    "postMeeting": {
+      "enabled": true,
+      "minutesAfter": 5,
+      "subjectTemplate": "Thank you for meeting with Autonome, {customer_name}",
+      "bodyTemplate": "Hi {customer_name},\n\nThank you for taking the time to meet with Autonome today. We appreciated the opportunity to discuss {company_name} and your goals.\n\nIf you have follow-up questions, reply directly and we will continue the conversation.\n\nBest,\n\nThe Autonome Team"
+    },
+    "updatedAt": "2026-04-16T22:27:07.801+00:00"
+  }
+}
