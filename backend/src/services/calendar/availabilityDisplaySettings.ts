@@ -114,7 +114,13 @@ NOTIFY pgrst, 'reload schema';
 `;
 
 function getSettingsFilePath(): string {
-  return join(process.cwd(), 'data', 'availability-display-settings.json');
+  const rootPath = join(process.cwd(), 'data', 'availability-display-settings.json');
+  const backendPath = join(process.cwd(), 'backend', 'data', 'availability-display-settings.json');
+  
+  if (!existsSync(rootPath) && existsSync(backendPath)) {
+    return backendPath;
+  }
+  return rootPath;
 }
 
 function clampDisplayWindowDays(value: unknown, fallback: number): number {

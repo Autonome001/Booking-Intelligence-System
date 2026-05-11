@@ -132,7 +132,12 @@ export class ServiceManager {
     if (circuitBreaker.state === CircuitBreakerState.OPEN) {
       const now = Date.now();
       if (circuitBreaker.nextAttempt && now < circuitBreaker.nextAttempt) {
-        logger.warn(`Circuit breaker OPEN for service ${serviceName}`);
+        // If we have a cached instance, we can still return it (Graceful Degradation)
+        if (serviceInfo.instance) {
+          logger.warn(`Circuit breaker OPEN for service ${serviceName} - Returning cached instance for degraded mode`);
+          return serviceInfo.instance as T;
+        }
+        logger.warn(`Circuit breaker OPEN for service ${serviceName} - No instance available`);
         return null;
       }
       // Try to reset circuit breaker

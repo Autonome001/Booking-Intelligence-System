@@ -101,6 +101,33 @@ app.get('/favicon.ico', (_req: Request, res: Response): void => {
 });
 
 /**
+ * Emergency Circuit Breaker Reset
+ */
+app.post('/api/admin/reset-circuit-breaker', async (req: Request, res: Response): Promise<void> => {
+  const secret = req.headers['x-admin-secret'];
+  if (secret !== process.env['BOOKING_ADMIN_SECRET']) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const services = ['supabase', 'slack', 'openai', 'email', 'calendar', 'tavus'];
+    for (const service of services) {
+      serviceManager.resetCircuitBreaker(service);
+      await serviceManager.reinitializeService(service);
+    }
+
+    res.json({
+      success: true,
+      message: 'All circuit breakers have been reset and services marked for re-initialization',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+/**
  * Detailed diagnostics endpoint
  */
 app.get('/diagnostics', async (_req: Request, res: Response): Promise<void> => {

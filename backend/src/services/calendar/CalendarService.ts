@@ -159,29 +159,58 @@ export class CalendarService {
   /**
    * Initialize all active calendar providers from database
    */
+  private getCalendarAccountsFilePath(): string {
+    const rootPath = join(process.cwd(), 'data', 'calendar-accounts.json');
+    const backendPath = join(process.cwd(), 'backend', 'data', 'calendar-accounts.json');
+    if (!existsSync(rootPath) && existsSync(backendPath)) return backendPath;
+    return rootPath;
+  }
+
   async initializeProviders(): Promise<void> {
-    const tableStatus = await ensureCalendarAccountsTable(this.supabase);
+    let accounts: CalendarAccount[] | null = null;
 
-    if (!tableStatus.ready) {
-      console.warn(
-        `Calendar accounts table unavailable, continuing without calendar providers: ${tableStatus.reason || 'unknown reason'}`
-      );
-      return;
-    }
+    try {
+      const tableStatus = await ensureCalendarAccountsTable(this.supabase);
 
-    const { data: accounts, error } = await this.supabase
-      .from('calendar_accounts')
-      .select('*')
-      .eq('is_active', true)
-      .order('priority', { ascending: false });
+      if (tableStatus.ready) {
+        const { data, error } = await this.supabase
+          .from('calendar_accounts')
+          .select('*')
+          .eq('is_active', true)
+          .order('priority', { ascending: false });
 
-    if (error) {
-      console.error('Failed to load calendar accounts:', error);
-      throw new Error(`Failed to initialize calendar providers: ${error.message}`);
+        if (!error && data && data.length > 0) {
+          accounts = data as CalendarAccount[];
+          
+          try {
+            const filePath = this.getCalendarAccountsFilePath();
+            const dirPath = dirname(filePath);
+            if (!existsSync(dirPath)) mkdirSync(dirPath, { recursive: true });
+            writeFileSync(filePath, JSON.stringify(accounts, null, 2), 'utf8');
+          } catch (saveErr) {
+            console.warn('Failed to save calendar accounts fallback:', saveErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load calendar accounts from database, attempting local fallback...', err);
     }
 
     if (!accounts || accounts.length === 0) {
-      console.warn('No active calendar accounts found in database');
+      try {
+        const filePath = this.getCalendarAccountsFilePath();
+        if (existsSync(filePath)) {
+          const raw = readFileSync(filePath, 'utf8');
+          accounts = JSON.parse(raw) as CalendarAccount[];
+          console.log(`✅ Loaded ${accounts.length} calendar accounts from local fallback file.`);
+        }
+      } catch (fallbackErr) {
+        console.error('Failed to load calendar accounts from fallback file:', fallbackErr);
+      }
+    }
+
+    if (!accounts || accounts.length === 0) {
+      console.warn('No active calendar accounts found in database or fallback');
       return;
     }
 

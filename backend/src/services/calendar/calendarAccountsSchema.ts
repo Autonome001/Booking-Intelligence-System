@@ -47,7 +47,18 @@ export async function ensureCalendarAccountsTable(
 ): Promise<{ ready: boolean; repaired: boolean; reason?: string }> {
   const probe = await supabase.from('calendar_accounts').select('id').limit(1);
 
-  if (!isCalendarAccountsMissing(probe.error)) {
+  if (probe.error) {
+    if (isCalendarAccountsMissing(probe.error)) {
+      // Table is missing, we need to bootstrap
+    } else {
+      // Some other error (e.g. PGRST002), table is NOT ready
+      return { 
+        ready: false, 
+        repaired: false, 
+        reason: `Supabase platform error: ${probe.error.message} (${probe.error.code})` 
+      };
+    }
+  } else {
     return { ready: true, repaired: false };
   }
 

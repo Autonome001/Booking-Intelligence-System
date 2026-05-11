@@ -58,7 +58,11 @@ CREATE TABLE IF NOT EXISTS meeting_notification_settings (
 `;
 
 function getSettingsFilePath(): string {
-  return join(process.cwd(), 'data', 'meeting-notification-settings.json');
+  const rootPath = join(process.cwd(), 'data', 'meeting-notification-settings.json');
+  const backendPath = join(process.cwd(), 'backend', 'data', 'meeting-notification-settings.json');
+  if (!existsSync(rootPath) && existsSync(backendPath)) return backendPath;
+  return rootPath;
+
 }
 
 function ensureSettingsDirectory(): void {
